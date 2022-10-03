@@ -12,11 +12,24 @@ import random
 from functools import cmp_to_key
 from quantize import quantize
 
+random.seed(time.time())
 
+players_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
+players_melody = [m1, m2, m3]
+synths = [ambi, sinepad]
+chords = [
+            [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
+            [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
+            [-11, -9, -7, -4,-2,0, 3, 5, 7]
+            ]
+max_players = len(players_accomp) + len(players_melody)
+
+quantized = True
+playing = False
 global last_frame                                      #creating global variable
 last_frame = numpy.zeros((480, 640, 3), dtype=numpy.uint8)
 global cap
-cap = cv2.VideoCapture("media/fireworks.mp4")
+cap = cv2.VideoCapture("media/short.mp4")
 
 
 lk_params = dict(winSize  = (15, 15),
@@ -39,7 +52,104 @@ frame_idx = 0
 
 # cap = None
 webcam = False
-def show_vid():                                        #creating a function
+chord = chords[0]
+chord_change_interval = 120
+vid_frame = 0
+chord_idx = 0
+
+def generate_music(trajectories, h, w):
+    melody_attrs = [None] * len(players_melody)
+    accomp_attrs = [None] * len(players_accomp)
+        
+    # print(len(trajectories))
+    if len(trajectories) > max_players:
+        trajectories_sorted = sorted(trajectories, key=cmp_to_key(lambda t1, t2: math.dist(t2[0], t2[-1]) - math.dist(t1[0], t1[-1])))
+
+        trajectories_best = trajectories_sorted[:max_players]
+        # trajectories_best = random.sample(trajectories, max_players)
+        # for t1 in trajectories_best:
+        #     print(math.dist(t1[0], t1[-1]))
+        # print("DONE")
+    else:
+        trajectories_best = trajectories
+
+    for i in range(len(trajectories_best)):
+        if i > len(players_accomp)-1:
+            t = trajectories_best[i]
+            mag = math.dist(t[0], t[-1])
+            vol = mag / 200
+            # print(vol)
+            pitch = (h - t[-1][1]) / h * 24 - 12
+            if quantized:
+                pitch = round(pitch)
+            dur = 1/3
+            pan = (t[-1][0] / w) * 1.6 - 0.8
+            melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan)
+        else:
+            t = trajectories_best[i]
+            mag = math.dist(t[0], t[-1])
+            vol = mag / 200
+            # print(vol)
+            pitch = (h - t[-1][1]) / h * 24 - 12
+            if quantized:
+                pitch = round(pitch)
+            dur = 1/3
+            pan = (t[-1][0] / w) * 1.6 - 0.8
+            accomp_attrs[i] = (pitch, vol, dur, pan)
+
+        # print(mag)
+    # print(player_attrs)
+    
+    for i in range(len(melody_attrs)):
+        if melody_attrs[i] is None:
+            break
+        pitch = melody_attrs[i][0]
+        # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
+        # print(pitch)
+        # pitch = quantize(pitch, chord)
+    
+        vol = melody_attrs[i][1]
+        dur = melody_attrs[i][2]
+        pan = melody_attrs[i][3]
+        delay = random.choice([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1])
+        # print(delay)
+
+        synth_rand = random.choice(synths)
+        players_melody[i] >> piano (pitch, dur=1/4, amp=min(0.5, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
+
+    
+    for i in range(len(accomp_attrs)):
+        if accomp_attrs[i] is None:
+            break
+        pitch = accomp_attrs[i][0]
+        # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
+        # print(pitch)
+        if quantized:
+            pitch = quantize(pitch, chord)
+        # pitch = (pitch, pitch+2, pitch+4)
+    
+        vol = accomp_attrs[i][1]
+        dur = accomp_attrs[i][2]
+        pan = accomp_attrs[i][3]
+        # delay = random.choice([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1])
+        # print(delay)
+
+        synth_rand = random.choice(synths)
+        players_accomp[i] >> synth_rand(pitch, dur=5, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
+
+def show_vid(): 
+    global playing
+    global vid_frame, chord_idx, chord
+    vid_frame += 1
+    if vid_frame % chord_change_interval == 0:
+        chord_idx += 1
+        if chord_idx == len(chords):
+            chord_idx = 0
+        chord = chords[chord_idx]
+        print("CHORD IS ", chord_idx)
+    # print(playing)
+    if playing == False:   
+        return                                    #creating a function
     global trajectories, trajectory_len, frame_idx, detect_interval, prev_gray, frame_gray, cap
     if not cap.isOpened():                             #checks for the opening of camera
         print("cant open the camera")
@@ -48,6 +158,14 @@ def show_vid():                                        #creating a function
     start = time.time()
 
     flag, frame = cap.read()
+    if flag == False:
+        playing = False
+        cap.release()
+        cv2.destroyAllWindows()
+        Clock.clear()
+        print("we tried")
+        return
+
     frame = cv2.flip(frame, 1)
 
 
@@ -82,6 +200,8 @@ def show_vid():                                        #creating a function
             cv2.circle(img, (int(x), int(y)), 2, (0, 0, 255), -1)
 
         trajectories = new_trajectories
+
+        generate_music(trajectories, h, w)
 
         # Draw all the trajectories
         for i in range(len(trajectories)):
@@ -120,11 +240,9 @@ def show_vid():                                        #creating a function
     # cv2.imshow('Optical Flow', img)
     # cv2.imshow('Mask', mask)
 
-    if flag is None:
-        print("Major error!")
-    elif flag:
-        global last_frame
-        last_frame = img
+
+    global last_frame
+    last_frame = img
 
 
     pic = cv2.cvtColor(last_frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
@@ -132,12 +250,20 @@ def show_vid():                                        #creating a function
     imgtk = ImageTk.PhotoImage(image=img)
     lmain.imgtk = imgtk
     lmain.configure(image=imgtk)
-    lmain.after(1, show_vid)
+    lmain.after(10, show_vid)
 
-def stop_vid():
-    global cap
-    cap.release()
-    cv2.destroyAllWindows()
+def stop_playback():
+    # global cap
+    # cap.release()
+    # cv2.destroyAllWindows()
+    global playing
+    playing = False
+    Clock.clear()
+
+def start_playback():
+    global playing
+    playing = True
+    show_vid()
 
 
 if __name__ == '__main__':
@@ -152,10 +278,16 @@ if __name__ == '__main__':
     scale_dropdown = tkinter.OptionMenu(root, selected_scale, 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi')
     scale_dropdown.grid(column=0)
 
+    # start button
+    start_btn = tkinter.Button(root, text="Start", command=start_playback, height=3, width=6)
+    start_btn.grid(column=0)
+
     # stop button
-    stop_btn = tkinter.Button(root, text="Stop", command=stop_vid, height=3, width=6)
+    stop_btn = tkinter.Button(root, text="Stop", command=stop_playback, height=3, width=6)
     stop_btn.grid(column=0)
 
-    show_vid()
+    if playing:
+        print("now it's", playing)
+        show_vid()
     root.mainloop()                                  #keeps the application in an infinite loop so it works continuosly
     cap.release()
