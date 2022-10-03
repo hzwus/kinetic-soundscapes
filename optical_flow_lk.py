@@ -1,49 +1,79 @@
 import tkinter
-from fileinput import filelineno
+import tkinter.filedialog
 import numpy
 import cv2
+from os import getcwd
+from os.path import normpath, basename
 import time
 import math
 from FoxDot import *
-import itertools
 import random
 from functools import cmp_to_key
 from quantize import quantize
 
+# NOTE: VARIABLE NAMES WITH 2 LETTERS ARE ONLY TO BE USED FOR FOXDOT PLAYER OBJECTS. 
+# (THEY ARE RESERVED IN THE FOXDOT NAMESPACE)
+
+########################################################
+#################### USER INTERFACE ####################
+########################################################
 root = tkinter.Tk()
 root.title("Kinetic Soundscapes")
-root.geometry('400x600')
+root.geometry('1000x600')
 
-# canvas = tkinter.Canvas(root, width=400, height=600)
-# canvas.grid(rowspan=8)
+# file dialog
+root.filename = "default"
+def select_file():
+    root.filename = tkinter.filedialog.askopenfilename(initialdir=getcwd(), title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
+select_file_button = tkinter.Button(root, text="Select Video File", command=select_file)
+select_file_button.pack()
 
-#description
-# desc = tkinter.Label(root, text="Program to generate music from video")
+var = tkinter.StringVar()
+selected_file_label = tkinter.Label(root, textvariable=var)
+var.set(basename(normpath(root.filename)))
+selected_file_label.pack()
 
-#dropdown
+# dropdown for root
+selected_root = tkinter.StringVar()
+selected_root.set('C#')
+root_dropdown = tkinter.OptionMenu(root, selected_root, 'C', 'C#', 'D', 'D#', 'E', 'E#', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'B#')
+root_dropdown.pack()
+
+# dropdown for scale
 selected_scale = tkinter.StringVar()
 selected_scale.set('major')
-drop = tkinter.OptionMenu(root, selected_scale, 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi')
-drop.pack()
-root.mainloop()
+scale_dropdown = tkinter.OptionMenu(root, selected_scale, 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi')
+scale_dropdown.pack()
+
+# slider for tempo
+selected_bpm = 120
+def slide_bpm(var):
+    global selected_bpm 
+    selected_bpm = bpm_slider.get()
+bpm_slider = tkinter.Scale(root, from_=20, to=220, orient=tkinter.HORIZONTAL, resolution = 4, length = 200, sliderlength=20, command=slide_bpm)
+bpm_slider.set(120)
+bpm_slider.pack()
+
+# input for chord change interval
+selected_cci = tkinter.StringVar()
+def change_cci(var):
+    global selected_cci
+    selected_cci = cci_entry.get()
+cci_entry = tkinter.Entry(root, textvariable=selected_cci, width=5)
+cci_entry.bind('<Return>', (lambda _: change_cci(cci_entry)))
+cci_entry.insert(0, "140")
+cci_entry.pack()
 
 
-print(SynthDefs)
 
-# import supriya
 
-# server = supriya.Server().boot()
 
-# NOTE: VARIABLE NAMES WITH 2 LETTERS ARE ONLY TO BE USED FOR FOXDOT PLAYER OBJECTS. (THEY ARE RESERVED IN THE FOXDOT NAMESPACE)
 
-# generate all permutations of 2 letter words
-# these are our FoxDot player objects
-# letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
-# players = [''.join(i) for i in itertools.product(letters, repeat = 2)]
+
 random.seed(time.time())
+
 players_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
 players_melody = [m1, m2, m3]
-# players.extend([b1, b2, b3, b4, b5, b6, b7, b8])
 synths = [ambi, sinepad]
 # synths = [klank, feel, ambi]
 
@@ -54,10 +84,21 @@ chords = [
             ]
 max_players = len(players_accomp) + len(players_melody)
 
-# ['aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi']
+Root.default.set(selected_root.get())
 
-Scale.default = selected_scale.get()
-Root.default.set("C#")
+quantized = True
+if selected_scale.get() == 'none (atonal)':
+    quantized = False
+else:
+    quantized = True
+    Scale.default.set(selected_scale.get())
+
+Clock.bpm = selected_bpm
+
+print("BEGIN MUSIC GENERATION")
+print("ROOT: ", Root.default.char, "(" + str(Root.default) + ")")
+print("SCALE: ", Scale.default.name, "(" + str(Scale.default)[2:-1] + ")")
+print("TEMPO: ", selected_bpm)
 
 lk_params = dict(winSize  = (15, 15),
                 maxLevel = 2,
@@ -77,20 +118,23 @@ detect_interval = 5
 trajectories = []
 frame_idx = 0
 
+root.mainloop()
 cap = None
 webcam = False
 if webcam:
     cap = cv2.VideoCapture(0)
 else:
-    cap = cv2.VideoCapture("media/fireworks.mp4")
+    cap = cv2.VideoCapture(root.filename)
 
 
 # synth = server.add_synth()
 
 chord = chords[0]
-chord_change_interval = 140
+chord_change_interval = int(selected_cci.get())
 vid_frame = 0
 chord_idx = 0
+
+
 while True:
 
     vid_frame += 1
@@ -162,7 +206,9 @@ while True:
                 mag = math.dist(t[0], t[-1])
                 vol = mag / 200
                 # print(vol)
-                pitch = round((h - t[-1][1]) / h * 24 - 12)
+                pitch = (h - t[-1][1]) / h * 24 - 12
+                if quantized:
+                    pitch = round(pitch)
                 dur = 1/3
                 pan = (t[-1][0] / w) * 1.6 - 0.8
                 melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan)
@@ -171,7 +217,9 @@ while True:
                 mag = math.dist(t[0], t[-1])
                 vol = mag / 200
                 # print(vol)
-                pitch = round((h - t[-1][1]) / h * 24 - 12)
+                pitch = (h - t[-1][1]) / h * 24 - 12
+                if quantized:
+                    pitch = round(pitch)
                 dur = 1/3
                 pan = (t[-1][0] / w) * 1.6 - 0.8
                 accomp_attrs[i] = (pitch, vol, dur, pan)
@@ -203,7 +251,8 @@ while True:
             pitch = accomp_attrs[i][0]
             # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
             # print(pitch)
-            pitch = quantize(pitch, chord)
+            if quantized:
+                pitch = quantize(pitch, chord)
             # pitch = (pitch, pitch+2, pitch+4)
         
             vol = accomp_attrs[i][1]
