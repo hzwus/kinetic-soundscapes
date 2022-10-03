@@ -1,3 +1,4 @@
+import tkinter
 from fileinput import filelineno
 import numpy
 import cv2
@@ -8,6 +9,25 @@ import itertools
 import random
 from functools import cmp_to_key
 from quantize import quantize
+
+root = tkinter.Tk()
+root.title("Kinetic Soundscapes")
+root.geometry('400x600')
+
+# canvas = tkinter.Canvas(root, width=400, height=600)
+# canvas.grid(rowspan=8)
+
+#description
+# desc = tkinter.Label(root, text="Program to generate music from video")
+
+#dropdown
+selected_scale = tkinter.StringVar()
+selected_scale.set('major')
+drop = tkinter.OptionMenu(root, selected_scale, 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi')
+drop.pack()
+root.mainloop()
+
+
 print(SynthDefs)
 
 # import supriya
@@ -36,7 +56,7 @@ max_players = len(players_accomp) + len(players_melody)
 
 # ['aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi']
 
-Scale.default = "major"
+Scale.default = selected_scale.get()
 Root.default.set("C#")
 
 lk_params = dict(winSize  = (15, 15),
