@@ -8,8 +8,6 @@ import itertools
 import random
 from functools import cmp_to_key
 from quantize import quantize
-print(SynthDefs)
-
 # import supriya
 
 # server = supriya.Server().boot()
@@ -21,18 +19,17 @@ print(SynthDefs)
 # letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
 # players = [''.join(i) for i in itertools.product(letters, repeat = 2)]
 random.seed(time.time())
-players_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
-players_melody = [m1, m2, m3]
-# players.extend([b1, b2, b3, b4, b5, b6, b7, b8])
-synths = [ambi, sinepad]
+players = [a1, a2, a3, a4, a5, a6, a7, a8]
+# players.extend([b1, b2, b3, b4])
+synths = [marimba, ambi, sinepad]
 # synths = [klank, feel, ambi]
 
 chords = [
-            [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
+            [-7,-5,2, 0,2,3,4,5, 7,9,12], 
             [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
             [-11, -9, -7, -4,-2,0, 3, 5, 7]
             ]
-max_players = len(players_accomp) + len(players_melody)
+max_players = len(players)
 
 # ['aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi']
 
@@ -43,26 +40,20 @@ lk_params = dict(winSize  = (15, 15),
                 maxLevel = 2,
                 criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
-maxCorners = 6
-feature_params = dict(maxCorners = maxCorners,
+feature_params = dict(maxCorners = 20,
                     qualityLevel = 0.3,
                     minDistance = 10,
                     blockSize = 7 )
 
-# Create some random colors
-random_colors = numpy.random.randint(0, 255, (10000, 3))
 
 trajectory_len = 16
-detect_interval = 5
+detect_interval = 1
 trajectories = []
 frame_idx = 0
 
-cap = None
-webcam = False
-if webcam:
-    cap = cv2.VideoCapture(0)
-else:
-    cap = cv2.VideoCapture("media/fireworks.mp4")
+
+# cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture("media/fireworks.mp4")
 
 
 # synth = server.add_synth()
@@ -89,11 +80,9 @@ while True:
 
     suc, frame = cap.read()
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    if webcam:
-        frame_gray = cv2.flip(frame_gray, 1)
+    frame_gray = cv2.flip(frame_gray, 1)
     img = frame.copy()
-    if webcam:
-        img = cv2.flip(img, 1)
+    img = cv2.flip(img, 1)
     h, w = img.shape[:2]
 
     # Calculate optical flow for a sparse feature set using the iterative Lucas-Kanade Method
@@ -105,6 +94,7 @@ while True:
         d = abs(pts0-pts0r).reshape(-1, 2).max(-1)
         good = d < 1
      
+
         new_trajectories = []
 
         # Get all the trajectories
@@ -120,8 +110,15 @@ while True:
 
         trajectories = new_trajectories
 
-        melody_attrs = [None] * len(players_melody)
-        accomp_attrs = [None] * len(players_accomp)
+        # mag_total = 0
+        # for t in trajectories:
+        #     mag = math.dist(t[0], t[-1])
+        #     mag_total += mag
+        # print("mag total is ", mag_total)
+
+        # vol = mag_total / 100
+        # pitches = set()
+        player_attrs = [None] * len(players)
         
             
         # print(len(trajectories))
@@ -129,71 +126,38 @@ while True:
             trajectories_sorted = sorted(trajectories, key=cmp_to_key(lambda t1, t2: math.dist(t2[0], t2[-1]) - math.dist(t1[0], t1[-1])))
 
             trajectories_best = trajectories_sorted[:max_players]
-            # trajectories_best = random.sample(trajectories, max_players)
             # for t1 in trajectories_best:
             #     print(math.dist(t1[0], t1[-1]))
             # print("DONE")
         else:
             trajectories_best = trajectories
-
         for i in range(len(trajectories_best)):
-            if i > len(players_accomp)-1:
-                t = trajectories_best[i]
-                mag = math.dist(t[0], t[-1])
-                vol = mag / 200
-                # print(vol)
-                pitch = round((h - t[-1][1]) / h * 24 - 12)
-                dur = 1/3
-                pan = (t[-1][0] / w) * 1.6 - 0.8
-                melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan)
-            else:
-                t = trajectories_best[i]
-                mag = math.dist(t[0], t[-1])
-                vol = mag / 200
-                # print(vol)
-                pitch = round((h - t[-1][1]) / h * 24 - 12)
-                dur = 1/3
-                pan = (t[-1][0] / w) * 1.6 - 0.8
-                accomp_attrs[i] = (pitch, vol, dur, pan)
+            t = trajectories_best[i]
+            mag = math.dist(t[0], t[-1])
+            vol = mag / 100
+            pitch = round((h - t[-1][1]) / h * 24 - 12)
+            dur = 1/3
+            pan = (t[-1][0] / w) * 1.6 - 0.8
+            player_attrs[i] = (pitch, vol, dur, pan)
 
             # print(mag)
         # print(player_attrs)
         
-        for i in range(len(melody_attrs)):
-            if melody_attrs[i] is None:
+        # ['loop', 'stretch', 'play1', 'play2', 'audioin', 'noise', 'dab', 'varsaw', 'lazer', 'growl', 'bass', 'dirt', 'crunch', 'rave', 'scatter', 'charm', 'bell', 'gong', 'soprano', 'dub', 'viola', 'scratch', 'klank', 'feel', 'glass', 'soft', 'quin', 'pluck', 'spark', 'blip', 'ripple', 'creep', 'orient', 'zap', 'marimba', 'fuzz', 'bug', 'pulse', 'saw', 'snick', 'twang', 'karp', 'arpy', 'nylon', 'donk', 'squish', 'swell', 'razz', 'sitar', 'star', 'jbass', 'piano', 'sawbass', 'prophet', 'pads', 'pasha', 'ambi', 'space', 'keys', 'dbass', 'sinepad']
+        for i in range(len(player_attrs)):
+            if player_attrs[i] is None:
                 break
-            pitch = melody_attrs[i][0]
+            pitch = player_attrs[i][0]
             # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
-            # print(pitch)
-            # pitch = quantize(pitch, chord)
-        
-            vol = melody_attrs[i][1]
-            dur = melody_attrs[i][2]
-            pan = melody_attrs[i][3]
-            delay = random.choice([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1])
-            # print(delay)
-
-            synth_rand = random.choice(synths)
-            players_melody[i] >> marimba(pitch, dur=1/4, amp=min(0.5, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
-
-        
-        for i in range(len(accomp_attrs)):
-            if accomp_attrs[i] is None:
-                break
-            pitch = accomp_attrs[i][0]
-            # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
-            # print(pitch)
             pitch = quantize(pitch, chord)
-            # pitch = (pitch, pitch+2, pitch+4)
-        
-            vol = accomp_attrs[i][1]
-            dur = accomp_attrs[i][2]
-            pan = accomp_attrs[i][3]
-            # delay = random.choice([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1])
-            # print(delay)
+
+            vol = player_attrs[i][1]
+            dur = player_attrs[i][2]
+            pan = player_attrs[i][3]
 
             synth_rand = random.choice(synths)
-            players_accomp[i] >> synth_rand(pitch, dur=5, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
+            
+            players[i] >> synth_rand(pitch, dur=1/4, amp=min(2, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
 
       
 
@@ -219,8 +183,7 @@ while True:
 
 
         # Draw all the trajectories
-        for i in range(len(trajectories)):
-            cv2.polylines(img, [numpy.int32(trajectories[i])], False, random_colors[i].tolist(), 1)
+        cv2.polylines(img, [numpy.int32(trajectory) for trajectory in trajectories], False, (0, 255, 0))
         # print([numpy.int32(trajectory) for trajectory in trajectories])
         cv2.putText(img, 'track count: %d' % len(trajectories), (20, 50), cv2.FONT_HERSHEY_PLAIN, 1, (0,255,0), 2)
 
