@@ -180,7 +180,7 @@ def show_vid():
         imgtk = ImageTk.PhotoImage(image=img)
         lmain.imgtk = imgtk
         lmain.configure(image=imgtk)
-        play_btn.config(text="Play")
+        play_btn.config(text="Generate")
         cap_exists = False
         return
 
@@ -277,7 +277,7 @@ def pause_playback():
     # cv2.destroyAllWindows()
     global playing
     playing = False
-    play_btn.config(text="Play")
+    play_btn.config(text="Generate")
     Clock.clear()
 
 def start_playback():
@@ -289,7 +289,7 @@ def start_playback():
 def stop_playback():
     global cap, cap_exists, selected_video, trajectories
     pause_playback()
-    play_btn.config(text="Play")
+    play_btn.config(text="Generate")
     cap = cv2.VideoCapture(selected_video)
 
     flag, frame = cap.read()
@@ -442,7 +442,7 @@ if __name__ == '__main__':
         else:
             start_playback()
 
-    play_btn = tkinter.Button(playbar, text="Play", command=switch, height=3, width=6)
+    play_btn = tkinter.Button(playbar, text="Generate", command=switch, height=3, width=6)
     play_btn.grid(column=0, row=0)
 
     # stop button
