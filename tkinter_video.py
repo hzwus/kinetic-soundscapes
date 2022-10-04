@@ -1,3 +1,4 @@
+from email.policy import default
 from PIL import Image, ImageTk
 import tkinter
 import tkinter.filedialog
@@ -10,7 +11,7 @@ import math
 from FoxDot import *
 import random
 from functools import cmp_to_key
-from quantize import quantize
+from util import quantize, image_resize
 
 random.seed(time.time())
 
@@ -27,27 +28,28 @@ max_players = len(players_accomp) + len(players_melody)
 quantized = True
 playing = False
 global last_frame                                      #creating global variable
-last_frame = numpy.zeros((480, 640, 3), dtype=numpy.uint8)
-global cap
+last_frame = numpy.zeros((480, 720, 3), dtype=numpy.uint8)
 
-cap = cv2.VideoCapture("media/fireworks.mp4")
-cap_exists = True
+global selected_video
+selected_video = None
+
+global cap
+cap_exists = False
 
 lk_params = dict(winSize  = (15, 15),
                 maxLevel = 2,
                 criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
-maxCorners = 8
-feature_params = dict(maxCorners = maxCorners,
-                    qualityLevel = 0.3,
-                    minDistance = 10,
-                    blockSize = 7 )
+default_maxcorners = 12
+default_detectinterval = 4
+default_trajlen = 14
 
 # Create some random colors
-random_colors = numpy.random.randint(0, 255, (10000, 3))
+# random_colors = numpy.random.randint(0, 255, (10000, 3))
 
-trajectory_len = 16
-detect_interval = 5
+# max_corners = default_maxcorners
+# trajectory_len = default_trajlen
+# detect_interval = default_detectinterval
 trajectories = []
 frame_idx = 0
 
@@ -144,9 +146,15 @@ def show_vid():
     global vid_frame, chord_idx, chord
     global cap, cap_exists
     global trajectories, trajectory_len, frame_idx, detect_interval, prev_gray, frame_gray
+    global selected_video
+
+    feature_params = dict(maxCorners = max_corners,
+                    qualityLevel = 0.3,
+                    minDistance = 10,
+                    blockSize = 7 )
 
     if cap_exists == False:
-        cap = cv2.VideoCapture("media/fireworks.mp4")
+        cap = cv2.VideoCapture(selected_video)
         cap_exists = True
 
     vid_frame += 1
@@ -168,16 +176,17 @@ def show_vid():
     flag, frame = cap.read()
     if flag == False:
         pause_playback()
-        img = Image.fromarray(numpy.zeros((h,w,3), numpy.uint8))
+        img = Image.fromarray(numpy.zeros((480,720,3), numpy.uint8))
         imgtk = ImageTk.PhotoImage(image=img)
         lmain.imgtk = imgtk
         lmain.configure(image=imgtk)
         play_btn.config(text="Play")
         cap_exists = False
+        return
+
+    frame = image_resize(frame, width=720)
+
         
-
-    frame = cv2.flip(frame, 1)
-
 
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     if webcam:
@@ -215,9 +224,9 @@ def show_vid():
 
         # Draw all the trajectories
         for i in range(len(trajectories)):
-            cv2.polylines(img, [numpy.int32(trajectories[i])], False, random_colors[i].tolist(), 1)
+            cv2.polylines(img, [numpy.int32(trajectories[i])], False, (0, 255, 0), 1)
         # print([numpy.int32(trajectory) for trajectory in trajectories])
-        cv2.putText(img, 'track count: %d' % len(trajectories), (20, 50), cv2.FONT_HERSHEY_PLAIN, 1, (0,255,0), 2)
+        # cv2.putText(img, 'track count: %d' % len(trajectories), (20, 50), cv2.FONT_HERSHEY_PLAIN, 1, (0,255,0), 2)
 
 
     # Update interval - When to update and detect new features
@@ -246,14 +255,13 @@ def show_vid():
 
     
     # Show Results
-    cv2.putText(img, f"{fps:.2f} FPS", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    # cv2.putText(img, f"{fps:.2f} FPS", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     # cv2.imshow('Optical Flow', img)
     # cv2.imshow('Mask', mask)
 
 
     global last_frame
     last_frame = img
-
 
     pic = cv2.cvtColor(last_frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
     img = Image.fromarray(pic)
@@ -262,7 +270,6 @@ def show_vid():
     lmain.configure(image=imgtk)
     lmain.after(10, show_vid)
 
-    return trajectories
 
 def pause_playback():
     # global cap
@@ -274,72 +281,158 @@ def pause_playback():
     Clock.clear()
 
 def start_playback():
-    global playing
+    global playing, selected_video
     playing = True
     play_btn.config(text="Pause")
     show_vid()
 
 def stop_playback():
-    global cap, cap_exists
+    global cap, cap_exists, selected_video, trajectories
     pause_playback()
     play_btn.config(text="Play")
-    cap.release()
-    img = Image.fromarray(numpy.zeros((h,w,3), numpy.uint8))
+    cap = cv2.VideoCapture(selected_video)
+
+    flag, frame = cap.read()
+    frame = image_resize(frame, width=720)
+    pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
+    img = Image.fromarray(pic)
     imgtk = ImageTk.PhotoImage(image=img)
     lmain.imgtk = imgtk
     lmain.configure(image=imgtk)
+
+    trajectories = []
+
+    cap.release()
     cap_exists = False
 
 
 
 if __name__ == '__main__':
-    root=tkinter.Tk()                                     #assigning root variable for Tkinter as tk
-    lmain = tkinter.Label(master=root)
-    lmain.grid(column=1, rowspan=4, padx=5, pady=5)
+    root=tkinter.Tk()                                     
     root.title("Kinetic Soundscapes")            #you can give any title
 
-    root.geometry('1280x720')
+    sidebar = tkinter.LabelFrame(root, width=280, height=720)
+    sidebar.grid(column=0)
 
+     # file dialog
+    root.filename = ""
+    selected_video = ""
+    var = tkinter.StringVar()
 
-    # file dialog
-    root.filename = "default"
     def select_file():
-        root.filename = tkinter.filedialog.askopenfilename(initialdir=getcwd(), title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
+        global selected_video, cap_exists
+        root.filename = tkinter.filedialog.askopenfilename(initialdir=getcwd()+'/media', title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
+        selected_video = root.filename
+        print("selected_video is ", selected_video)
+        var.set(basename(normpath(selected_video)))
+
         cap = cv2.VideoCapture(root.filename)
         flag, frame = cap.read()
+        frame = image_resize(frame, width=720)
         pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
         img = Image.fromarray(pic)
         imgtk = ImageTk.PhotoImage(image=img)
         lmain.imgtk = imgtk
         lmain.configure(image=imgtk)
-    select_file_button = tkinter.Button(root, text="Select Video File", command=select_file)
-    select_file_button.grid(column=0)
-    # print("filename is ", root.filename)
-    # cap = cv2.VideoCapture(root.filename)
+        stop_playback()
+
+    select_file_button = tkinter.Button(sidebar, text="Select Video File", command=select_file, height=3)
+    select_file_button.grid()
+
+    selected_file_label = tkinter.Label(sidebar, textvariable=var)
+    selected_file_label.grid(pady=(0, 20))
 
 
+    sidebar_motion = tkinter.LabelFrame(sidebar, text="Motion Settings", width=280, height=360)
+    sidebar_motion.grid(padx=5, pady=5)
 
-    # var = tkinter.StringVar()
-    # selected_file_label = tkinter.Label(root, textvariable=var)
-    # var.set(basename(normpath(root.filename)))
-    # selected_file_label.grid(column=0)
+    maxcorners_label = tkinter.Label(sidebar_motion, text="Max Corners").grid(row=0, column=0)
+    trajlen_label = tkinter.Label(sidebar_motion, text="Trajectory Length").grid(row=1, column=0)
+    detectinterval_label = tkinter.Label(sidebar_motion, text="Detect Interval").grid(row=2, column=0)
+
+    # slider for max corners
+    def slide_maxcorners(var):
+        global max_corners, default_maxcorners
+        max_corners = maxcorners_slider.get()
+    maxcorners_slider = tkinter.Scale(sidebar_motion, from_=2, to=20, orient=tkinter.HORIZONTAL, resolution = 1, length = 120, sliderlength=20, command=slide_maxcorners)
+    maxcorners_slider.set(default_maxcorners)
+    maxcorners_slider.grid(row=0, column=1)
+
+    # slider for trajectory length
+    def slide_trajlen(var):
+        global trajectory_len, default_trajlen
+        trajectory_len = trajlen_slider.get()
+    trajlen_slider = tkinter.Scale(sidebar_motion, from_=2, to=160, orient=tkinter.HORIZONTAL, resolution = 1, length = 120, sliderlength=20, command=slide_trajlen)
+    trajlen_slider.set(default_trajlen)
+    trajlen_slider.grid(row=1, column=1)
+
+    # slider for detection interval
+    def slide_detectinterval(var):
+        global detect_interval, default_detectinterval
+        detect_interval = detectinterval_slider.get()
+    detectinterval_slider = tkinter.Scale(sidebar_motion, from_=1, to=50, orient=tkinter.HORIZONTAL, resolution = 1, length = 120, sliderlength=20, command=slide_detectinterval)
+    detectinterval_slider.set(default_detectinterval)
+    detectinterval_slider.grid(row=2, column=1)
+
+    def reset_motion_settings():
+        global default_maxcorners, default_trajlen, default_detectinterval
+        maxcorners_slider.set(default_maxcorners)
+        trajlen_slider.set(default_trajlen)
+        detectinterval_slider.set(default_detectinterval)
+    reset_motion_btn = tkinter.Button(sidebar_motion, text="Reset", command=reset_motion_settings)
+    reset_motion_btn.grid()
+
+    sidebar_music = tkinter.LabelFrame(sidebar, text="Music Settings", width=280, height=360)
+    sidebar_music.grid(padx=5, pady=5)
+
+    viewer = tkinter.LabelFrame(root, width=1000, height=700, padx=5, pady=5)
+    viewer.grid(column=1, row=0, padx=5, pady=5)
+
+    playbar = tkinter.LabelFrame(viewer, width=1000, height=70, padx=5, pady=5)
+    playbar.grid(row=1)
+
+    lmain = tkinter.Label(viewer)
+    lmain.grid(row=0)
+
+    img = Image.fromarray(numpy.zeros((480,720,3), numpy.uint8))
+    imgtk = ImageTk.PhotoImage(image=img)
+    lmain.imgtk = imgtk
+    lmain.configure(image=imgtk)
+
+    root_label = tkinter.Label(sidebar_music, text="Root").grid(row=0, column=0)
+    scale_label = tkinter.Label(sidebar_music, text="Scale").grid(row=1, column=0)
+    tempo_label = tkinter.Label(sidebar_music, text="Tempo").grid(row=2, column=0)
+
+
+    # dropdown for root
+    def set_root(var):
+        Root.default.set(selected_root.get())
+        print("setting root to ", Root.default.char)
+    selected_root = tkinter.StringVar()
+    selected_root.set('C')
+    root_dropdown = tkinter.OptionMenu(sidebar_music, selected_root, 'C', 'C#', 'D', 'D#', 'E', 'E#', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'B#', command=set_root)
+    root_dropdown.grid(row=0, column=1)
 
     # dropdown for scale
     def set_scale(var):
-        Scale.default.set(selected_scale.get())
+        global quantized
+        if selected_scale.get() == 'none (atonal)':
+            quantized = False
+        else:
+            quantized = True
+            Scale.default.set(selected_scale.get())
         print("setting scale to ", Scale.default.name)
     selected_scale = tkinter.StringVar()
     selected_scale.set('major')
-    scale_dropdown = tkinter.OptionMenu(root, selected_scale, 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi', command=set_scale)
-    scale_dropdown.grid(column=0, row=1)
+    scale_dropdown = tkinter.OptionMenu(sidebar_music, selected_scale, 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi', command=set_scale)
+    scale_dropdown.grid(row=1, column=1)
 
     # slider for tempo
     def slide_bpm(var):
-        global selected_bpm 
         Clock.update_tempo_now(bpm_slider.get())
-    bpm_slider = tkinter.Scale(root, from_=20, to=220, orient=tkinter.HORIZONTAL, resolution = 4, length = 200, sliderlength=20, command=slide_bpm)
+    bpm_slider = tkinter.Scale(sidebar_music, from_=20, to=220, orient=tkinter.HORIZONTAL, resolution = 4, length = 120, sliderlength=20, command=slide_bpm)
     bpm_slider.set(120)
-    bpm_slider.grid(column=0, row=2)
+    bpm_slider.grid(row=2, column=1)
 
     # play/pause button
     def switch():
@@ -349,13 +442,14 @@ if __name__ == '__main__':
         else:
             start_playback()
 
-    play_btn = tkinter.Button(root, text="Play", command=switch, height=3, width=6)
-    play_btn.grid(column=0, row=9)
+    play_btn = tkinter.Button(playbar, text="Play", command=switch, height=3, width=6)
+    play_btn.grid(column=0, row=0)
 
     # stop button
-    stop_btn = tkinter.Button(root, text="Stop", command=stop_playback, height=3, width=6)
-    stop_btn.grid(column=0, row=10)
+    stop_btn = tkinter.Button(playbar, text="Stop", command=stop_playback, height=3, width=6)
+    stop_btn.grid(column=1, row=0)
     
-    show_vid()
+    if selected_video != "":
+        show_vid()
+
     root.mainloop()                                  #keeps the application in an infinite loop so it works continuosly
-    cap.release()
