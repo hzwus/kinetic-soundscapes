@@ -29,14 +29,15 @@ playing = False
 global last_frame                                      #creating global variable
 last_frame = numpy.zeros((480, 640, 3), dtype=numpy.uint8)
 global cap
-cap = cv2.VideoCapture("media/short.mp4")
 
+cap = cv2.VideoCapture("media/fireworks.mp4")
+cap_exists = True
 
 lk_params = dict(winSize  = (15, 15),
                 maxLevel = 2,
                 criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
-maxCorners = 6
+maxCorners = 8
 feature_params = dict(maxCorners = maxCorners,
                     qualityLevel = 0.3,
                     minDistance = 10,
@@ -57,7 +58,7 @@ chord_change_interval = 120
 vid_frame = 0
 chord_idx = 0
 
-def generate_music(trajectories, h, w):
+def generate_music(trajectories):
     melody_attrs = [None] * len(players_melody)
     accomp_attrs = [None] * len(players_accomp)
         
@@ -115,7 +116,7 @@ def generate_music(trajectories, h, w):
         # print(delay)
 
         synth_rand = random.choice(synths)
-        players_melody[i] >> piano (pitch, dur=1/4, amp=min(0.5, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
+        players_melody[i] >> marimba(pitch, dur=1/4, amp=min(0.5, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
 
     
     for i in range(len(accomp_attrs)):
@@ -138,8 +139,16 @@ def generate_music(trajectories, h, w):
         players_accomp[i] >> synth_rand(pitch, dur=5, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
 
 def show_vid(): 
+    global h, w
     global playing
     global vid_frame, chord_idx, chord
+    global cap, cap_exists
+    global trajectories, trajectory_len, frame_idx, detect_interval, prev_gray, frame_gray
+
+    if cap_exists == False:
+        cap = cv2.VideoCapture("media/fireworks.mp4")
+        cap_exists = True
+
     vid_frame += 1
     if vid_frame % chord_change_interval == 0:
         chord_idx += 1
@@ -150,7 +159,6 @@ def show_vid():
     # print(playing)
     if playing == False:   
         return                                    #creating a function
-    global trajectories, trajectory_len, frame_idx, detect_interval, prev_gray, frame_gray, cap
     if not cap.isOpened():                             #checks for the opening of camera
         print("cant open the camera")
 
@@ -159,12 +167,14 @@ def show_vid():
 
     flag, frame = cap.read()
     if flag == False:
-        playing = False
-        cap.release()
-        cv2.destroyAllWindows()
-        Clock.clear()
-        print("we tried")
-        return
+        pause_playback()
+        img = Image.fromarray(numpy.zeros((h,w,3), numpy.uint8))
+        imgtk = ImageTk.PhotoImage(image=img)
+        lmain.imgtk = imgtk
+        lmain.configure(image=imgtk)
+        play_btn.config(text="Play")
+        cap_exists = False
+        
 
     frame = cv2.flip(frame, 1)
 
@@ -201,7 +211,7 @@ def show_vid():
 
         trajectories = new_trajectories
 
-        generate_music(trajectories, h, w)
+        generate_music(trajectories)
 
         # Draw all the trajectories
         for i in range(len(trajectories)):
@@ -252,18 +262,34 @@ def show_vid():
     lmain.configure(image=imgtk)
     lmain.after(10, show_vid)
 
-def stop_playback():
+    return trajectories
+
+def pause_playback():
     # global cap
     # cap.release()
     # cv2.destroyAllWindows()
     global playing
     playing = False
+    play_btn.config(text="Play")
     Clock.clear()
 
 def start_playback():
     global playing
     playing = True
+    play_btn.config(text="Pause")
     show_vid()
+
+def stop_playback():
+    global cap, cap_exists
+    pause_playback()
+    play_btn.config(text="Play")
+    cap.release()
+    img = Image.fromarray(numpy.zeros((h,w,3), numpy.uint8))
+    imgtk = ImageTk.PhotoImage(image=img)
+    lmain.imgtk = imgtk
+    lmain.configure(image=imgtk)
+    cap_exists = False
+
 
 
 if __name__ == '__main__':
@@ -272,22 +298,64 @@ if __name__ == '__main__':
     lmain.grid(column=1, rowspan=4, padx=5, pady=5)
     root.title("Kinetic Soundscapes")            #you can give any title
 
+    root.geometry('1280x720')
+
+
+    # file dialog
+    root.filename = "default"
+    def select_file():
+        root.filename = tkinter.filedialog.askopenfilename(initialdir=getcwd(), title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
+        cap = cv2.VideoCapture(root.filename)
+        flag, frame = cap.read()
+        pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
+        img = Image.fromarray(pic)
+        imgtk = ImageTk.PhotoImage(image=img)
+        lmain.imgtk = imgtk
+        lmain.configure(image=imgtk)
+    select_file_button = tkinter.Button(root, text="Select Video File", command=select_file)
+    select_file_button.grid(column=0)
+    # print("filename is ", root.filename)
+    # cap = cv2.VideoCapture(root.filename)
+
+
+
+    # var = tkinter.StringVar()
+    # selected_file_label = tkinter.Label(root, textvariable=var)
+    # var.set(basename(normpath(root.filename)))
+    # selected_file_label.grid(column=0)
+
     # dropdown for scale
+    def set_scale(var):
+        Scale.default.set(selected_scale.get())
+        print("setting scale to ", Scale.default.name)
     selected_scale = tkinter.StringVar()
     selected_scale.set('major')
-    scale_dropdown = tkinter.OptionMenu(root, selected_scale, 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi')
-    scale_dropdown.grid(column=0)
+    scale_dropdown = tkinter.OptionMenu(root, selected_scale, 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi', command=set_scale)
+    scale_dropdown.grid(column=0, row=1)
 
-    # start button
-    start_btn = tkinter.Button(root, text="Start", command=start_playback, height=3, width=6)
-    start_btn.grid(column=0)
+    # slider for tempo
+    def slide_bpm(var):
+        global selected_bpm 
+        Clock.update_tempo_now(bpm_slider.get())
+    bpm_slider = tkinter.Scale(root, from_=20, to=220, orient=tkinter.HORIZONTAL, resolution = 4, length = 200, sliderlength=20, command=slide_bpm)
+    bpm_slider.set(120)
+    bpm_slider.grid(column=0, row=2)
+
+    # play/pause button
+    def switch():
+        global playing
+        if playing:
+            pause_playback()
+        else:
+            start_playback()
+
+    play_btn = tkinter.Button(root, text="Play", command=switch, height=3, width=6)
+    play_btn.grid(column=0, row=9)
 
     # stop button
     stop_btn = tkinter.Button(root, text="Stop", command=stop_playback, height=3, width=6)
-    stop_btn.grid(column=0)
-
-    if playing:
-        print("now it's", playing)
-        show_vid()
+    stop_btn.grid(column=0, row=10)
+    
+    show_vid()
     root.mainloop()                                  #keeps the application in an infinite loop so it works continuosly
     cap.release()

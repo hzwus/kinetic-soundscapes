@@ -44,6 +44,7 @@ selected_scale = tkinter.StringVar()
 selected_scale.set('major')
 scale_dropdown = tkinter.OptionMenu(root, selected_scale, 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'major', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minor', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi')
 scale_dropdown.pack()
+print("selecefefe", selected_scale.get())
 
 # slider for tempo
 selected_bpm = 120
@@ -66,7 +67,7 @@ cci_entry.pack()
 
 
 
-
+root.mainloop()
 
 
 
@@ -118,7 +119,6 @@ detect_interval = 5
 trajectories = []
 frame_idx = 0
 
-root.mainloop()
 cap = None
 webcam = False
 if webcam:
@@ -133,8 +133,6 @@ chord = chords[0]
 chord_change_interval = int(selected_cci.get())
 vid_frame = 0
 chord_idx = 0
-
-
 while True:
 
     vid_frame += 1
