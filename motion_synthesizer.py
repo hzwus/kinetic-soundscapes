@@ -24,7 +24,17 @@ synth_dict = {
     'prophet': prophet, 'pads': pads, 'pasha': pasha, 'ambi': ambi, 'space': space, 'keys': keys, 'dbass': dbass, 'sinepad': sinepad
 }
 
+# motion
+lk_params = dict(winSize  = (15, 15),
+                maxLevel = 2,
+                criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
+default_maxcorners = 12
+default_detectinterval = 4
+default_trajlen = 14
+trajectories = []
+
+# music
 all_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
 all_melody = [m1, m2, m3, m4, m5, m6, m7, m8]
 
@@ -34,49 +44,39 @@ default_accomp_layers = 4
 default_melody_synth = 'marimba'
 default_accomp_synth = 'ambi'
 
+default_cci = 120
+default_bpm = 120
+quantized = True
 chords = [
             [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
             [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
             [-11, -9, -7, -4,-2,0, 3, 5, 7]
             ]
+chord = chords[0]
+chord_change_interval = default_cci
 
+#playback
+playing = False
 show_video = True
 show_flow = True
+selected_video = None
+cap_exists = False
+frame_idx = 0
+webcam = False
+vid_frame = 0
+chord_idx = 0
+VIDEO_W = 1000
+VIDEO_H = 700
 
-quantized = True
-playing = False
 global last_frame                                      #creating global variable
 # last_frame = numpy.zeros((480, 720, 3), dtype=numpy.uint8)
 
-global selected_video
-selected_video = None
-
-global cap
-cap_exists = False
-
-lk_params = dict(winSize  = (15, 15),
-                maxLevel = 2,
-                criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-
-default_maxcorners = 12
-default_detectinterval = 4
-default_trajlen = 14
-
-default_cci = 120
-
-# Create some random colors
-# random_colors = numpy.random.randint(0, 255, (10000, 3))
-
-trajectories = []
-frame_idx = 0
-
-# cap = None
-webcam = False
-chord = chords[0]
-chord_change_interval = default_cci
-vid_frame = 0
-chord_idx = 0
-
+def convert_for_tk(frame):
+    frame = image_resize(frame, width=VIDEO_W)
+    pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
+    img = Image.fromarray(pic)
+    return ImageTk.PhotoImage(image=img)
+    
 def compute_flow(img):
     global trajectories
 
@@ -152,6 +152,14 @@ def generate_music(trajectories):
 
     melody_attrs = [None] * len(players_melody)
     accomp_attrs = [None] * len(players_accomp)
+
+    if melody_layers == 0:
+        for melody in all_melody:
+            melody.stop()
+    if accomp_layers == 0:
+        for accomp in all_accomp:
+            accomp.stop()
+
         
     # print(len(trajectories))
     if len(trajectories) > max_players:
@@ -227,7 +235,7 @@ def generate_music(trajectories):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=5, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
+        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=2, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
 
 def show_frame(): 
     global h, w
@@ -237,7 +245,6 @@ def show_frame():
     global trajectories, trajectory_len, frame_idx, detect_interval, prev_gray, frame_gray
     global selected_video
     global webcam
-
 
     if cap_exists == False:
         if webcam:
@@ -262,13 +269,12 @@ def show_frame():
     # start time to calculate FPS
     start = time.time()
 
-
     flag, frame = cap.read()
     if flag == False:
         stop_playback()
         return
 
-    frame = image_resize(frame, width=1000)
+    frame = image_resize(frame, width=VIDEO_W)
 
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     if webcam:
@@ -288,38 +294,35 @@ def show_frame():
     # calculate the FPS for current frame detection
     fps = 1 / (end-start)
 
-    
     # Show Results
     # cv2.putText(img, f"{fps:.2f} FPS", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     # cv2.imshow('Optical Flow', img)
     # cv2.imshow('Mask', mask)
 
-
     global last_frame
     last_frame = img
 
-    pic = cv2.cvtColor(last_frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
-    img = Image.fromarray(pic)
-    imgtk = ImageTk.PhotoImage(image=img)
-    lmain.imgtk = imgtk
-    lmain.configure(image=imgtk)
-    lmain.after(10, show_frame)
+    imgtk = convert_for_tk(last_frame)
+    result.imgtk = imgtk
+    result.configure(image=imgtk)
+    result.after(10, show_frame)
 
+
+    return ImageTk.PhotoImage(image=img)
 
 
 
 
 if __name__ == '__main__':
     def pause_playback():
-        # global cap
-        # cap.release()
-        # cv2.destroyAllWindows()
         global playing
         playing = False
         play_btn.config(text="Generate")
         Clock.clear()
         root_dropdown.config(state=tkinter.NORMAL)
         scale_dropdown.config(state=tkinter.NORMAL)
+        melody_synth_dropdown.config(state=tkinter.NORMAL)
+        accomp_synth_dropdown.config(state=tkinter.NORMAL)
 
     def start_playback():
         global playing, selected_video, webcam
@@ -327,6 +330,8 @@ if __name__ == '__main__':
         play_btn.config(text="Pause")
         root_dropdown.config(state=tkinter.DISABLED)
         scale_dropdown.config(state=tkinter.DISABLED)
+        melody_synth_dropdown.config(state=tkinter.DISABLED)
+        accomp_synth_dropdown.config(state=tkinter.DISABLED)
 
         show_frame()
 
@@ -346,23 +351,16 @@ if __name__ == '__main__':
         
         pause_playback()
         cap.release()
-        
-        frame = image_resize(frame, width=1000)
-        pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
-        img = Image.fromarray(pic)
-        imgtk = ImageTk.PhotoImage(image=img)
-        lmain.imgtk = imgtk
-        lmain.configure(image=imgtk)
-
+        imgtk = convert_for_tk(frame)
+        result.imgtk = imgtk
+        result.configure(image=imgtk)
         trajectories = []
-
-
         cap_exists = False
         
     root=tkinter.Tk()                                     
     root.title("Kinetic Soundscapes")            #you can give any title
 
-    sidebar = tkinter.LabelFrame(root, width=300, height=1000, borderwidth=2, padx=5, pady=5, relief='raised')
+    sidebar = tkinter.LabelFrame(root, width=300, height=VIDEO_W, borderwidth=2, padx=5, pady=5, relief='raised')
     sidebar.grid(column=0, sticky='ns')
 
      # file dialog
@@ -384,12 +382,10 @@ if __name__ == '__main__':
 
         cap = cv2.VideoCapture(root.filename)
         flag, frame = cap.read()
-        frame = image_resize(frame, width=1000)
-        pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
-        img = Image.fromarray(pic)
-        imgtk = ImageTk.PhotoImage(image=img)
-        lmain.imgtk = imgtk
-        lmain.configure(image=imgtk)
+        frame = image_resize(frame, width=VIDEO_W)
+        imgtk = convert_for_tk(frame)
+        result.imgtk = imgtk
+        result.configure(image=imgtk)
         stop_playback()
 
     select_file_button = tkinter.Button(sidebar, text="Select Video File", command=select_file, height=2)
@@ -404,7 +400,6 @@ if __name__ == '__main__':
         stop_playback()
     use_webcam_button = tkinter.Button(sidebar, text="Use Webcam", command=use_webcam, height=2)
     use_webcam_button.grid(column=1, row=0, sticky='we')
-
 
     sidebar_motion = tkinter.LabelFrame(sidebar, text="Motion Settings", width=280, height=360, padx=5, pady=5)
     sidebar_motion.grid(sticky='ew', pady=5, columnspan=2)
@@ -460,22 +455,22 @@ if __name__ == '__main__':
     playbar = tkinter.LabelFrame(player, width=1300, height=100, borderwidth=0)
     playbar.grid(row=1)
 
-    lmain = tkinter.Label(viewer)
-    lmain.grid()
+    result = tkinter.Label(viewer)
+    result.grid()
 
-    img = Image.fromarray(numpy.zeros((480,1000,3), numpy.uint8))
+    img = Image.fromarray(numpy.zeros((480,VIDEO_W,3), numpy.uint8))
     imgtk = ImageTk.PhotoImage(image=img)
-    lmain.imgtk = imgtk
-    lmain.configure(image=imgtk)
+    result.imgtk = imgtk
+    result.configure(image=imgtk)
 
     root_label = tkinter.Label(sidebar_music, text="Root").grid(row=0, column=0, sticky='ws')
     scale_label = tkinter.Label(sidebar_music, text="Scale").grid(row=1, column=0, sticky='ws')
     tempo_label = tkinter.Label(sidebar_music, text="Tempo").grid(row=2, column=0, sticky='ws')
     cci_label = tkinter.Label(sidebar_music, text="Chord Change Interval").grid(row=3, column=0, sticky='ws')
-    melody_synth_label = tkinter.Label(sidebar_music, text="Melody Synth").grid(row=6, column=0, sticky='ws')
-    accomp_synth_label = tkinter.Label(sidebar_music, text="Harmony Synth").grid(row=7, column=0, sticky='ws')
-    melody_layers_label = tkinter.Label(sidebar_music, text="Melody Layers").grid(row=4, column=0, sticky='ws')
-    accomp_layers_label = tkinter.Label(sidebar_music, text="Harmony Layers").grid(row=5, column=0, sticky='ws')
+    melody_synth_label = tkinter.Label(sidebar_music, text="Melody Synth").grid(row=4, column=0, sticky='ws')
+    accomp_synth_label = tkinter.Label(sidebar_music, text="Harmony Synth").grid(row=5, column=0, sticky='ws')
+    melody_layers_label = tkinter.Label(sidebar_music, text="Melody Layers").grid(row=6, column=0, sticky='ws')
+    accomp_layers_label = tkinter.Label(sidebar_music, text="Harmony Layers").grid(row=7, column=0, sticky='ws')
 
 
     # dropdown for root
