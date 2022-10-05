@@ -204,8 +204,6 @@ def show_frame():
     global cap, cap_exists
     global trajectories, trajectory_len, frame_idx, detect_interval, prev_gray, frame_gray
     global selected_video
-    global webcam
-
 
     if cap_exists == False:
         if webcam:
@@ -229,7 +227,6 @@ def show_frame():
 
     # start time to calculate FPS
     start = time.time()
-
 
     flag, frame = cap.read()
     if flag == False:
@@ -290,7 +287,7 @@ if __name__ == '__main__':
         scale_dropdown.config(state=tkinter.NORMAL)
 
     def start_playback():
-        global playing, selected_video, webcam
+        global playing, selected_video
         playing = True
         play_btn.config(text="Pause")
         root_dropdown.config(state=tkinter.DISABLED)
@@ -299,22 +296,12 @@ if __name__ == '__main__':
         show_frame()
 
     def stop_playback():
-        global cap, cap_exists, selected_video, trajectories, webcam
+        global cap, cap_exists, selected_video, trajectories
+        pause_playback()
         play_btn.config(text="Generate")
-
-        if webcam:
-            cap = cv2.VideoCapture(0)
-        else:
-            cap = cv2.VideoCapture(selected_video)
+        cap = cv2.VideoCapture(selected_video)
 
         flag, frame = cap.read()
-        if webcam:
-            h, w = frame.shape[:2]
-            frame = numpy.zeros((h, w, 3), dtype=numpy.uint8)
-        
-        pause_playback()
-        cap.release()
-        
         frame = image_resize(frame, width=720)
         pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
         img = Image.fromarray(pic)
@@ -324,7 +311,7 @@ if __name__ == '__main__':
 
         trajectories = []
 
-
+        cap.release()
         cap_exists = False
         
     root=tkinter.Tk()                                     
@@ -339,16 +326,12 @@ if __name__ == '__main__':
     var = tkinter.StringVar()
 
     def select_file():
-        global selected_video, webcam
-        webcam = False
+        global selected_video, cap_exists
         pause_playback()
         root.filename = tkinter.filedialog.askopenfilename(initialdir=getcwd()+'/media', title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
-        if root.filename != "":
-            selected_video = root.filename
+        selected_video = root.filename
         print("selected_video is ", selected_video)
         var.set(basename(normpath(selected_video)))
-
-        root.focus_force()
 
         cap = cv2.VideoCapture(root.filename)
         flag, frame = cap.read()
@@ -361,21 +344,14 @@ if __name__ == '__main__':
         stop_playback()
 
     select_file_button = tkinter.Button(sidebar, text="Select Video File", command=select_file, height=2)
-    select_file_button.grid(column=0, row=0, sticky='we')
+    select_file_button.grid(sticky='ew')
 
     selected_file_label = tkinter.Label(sidebar, textvariable=var, font=("Helvetica Bold", 14))
     selected_file_label.grid(pady=(2,0))
 
-    def use_webcam():
-        global webcam
-        webcam = True    
-        stop_playback()
-    use_webcam_button = tkinter.Button(sidebar, text="Use Webcam", command=use_webcam, height=2)
-    use_webcam_button.grid(column=1, row=0, sticky='we')
-
 
     sidebar_motion = tkinter.LabelFrame(sidebar, text="Motion Settings", width=280, height=360, padx=5, pady=5)
-    sidebar_motion.grid(sticky='ew', pady=5, columnspan=2)
+    sidebar_motion.grid(sticky='ew', pady=5)
 
     sidebar_motion.columnconfigure(0, weight = 1)
 
@@ -416,7 +392,7 @@ if __name__ == '__main__':
     reset_motion_btn.grid(columnspan=2)
 
     sidebar_music = tkinter.LabelFrame(sidebar, text="Music Settings", width=280, height=360, padx=5, pady=5)
-    sidebar_music.grid(sticky='ew', pady=5, columnspan=2)
+    sidebar_music.grid(sticky='ew', pady=5)
     sidebar_music.columnconfigure(0, weight = 1)
 
     player = tkinter.LabelFrame(root, width=1000, height=720, borderwidth=2, relief='raised')
@@ -487,7 +463,7 @@ if __name__ == '__main__':
         if playing:
             pause_playback()
         else:
-            if selected_video != "" or webcam == True:
+            if selected_video != "":
                 start_playback()
 
     play_btn = tkinter.Button(playbar, text="Generate", command=switch, height=3, width=6, relief='raised')
@@ -498,7 +474,7 @@ if __name__ == '__main__':
     stop_btn = tkinter.Button(playbar, text="Stop", command=stop_playback, height=3, width=6, relief='raised')
     stop_btn.grid(column=1, row=0, pady=5)
     
-    if selected_video != "" or webcam == True:
+    if selected_video != "":
         show_frame()
 
     root.mainloop()                                  #keeps the application in an infinite loop so it works continuosly
