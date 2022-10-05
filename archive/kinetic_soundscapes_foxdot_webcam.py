@@ -2,10 +2,8 @@ import numpy
 import cv2
 import time
 from FoxDot import *
-from scipy.stats import mode
 import math
 import os
-from matplotlib import pyplot as plt
 
 
 print(SynthDefs)

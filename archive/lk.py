@@ -20,7 +20,7 @@ frame_idx = 0
 
 
 # cap = cv2.VideoCapture(0)
-cap = cv2.VideoCapture("video_clips/waves1.mp4")
+cap = cv2.VideoCapture("media/fireworks.mp4")
 
 
 
@@ -73,10 +73,8 @@ while True:
 
         # Detect the good features to track
         p = cv2.goodFeaturesToTrack(frame_gray, mask = mask, **feature_params)
-        print("LEN OF GOOD FEATURES: ", len(p))
         if p is not None:
             # If good features can be tracked - add that to the trajectories
-            print("LEN OF WHATEVER THE FUCK THIS IS: ", len(np.float32(p).reshape(-1, 2)))
             for x, y in np.float32(p).reshape(-1, 2):
                 trajectories.append([(x, y)])
 

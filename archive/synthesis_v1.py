@@ -7,7 +7,7 @@ from FoxDot import *
 import itertools
 import random
 from functools import cmp_to_key
-from quantize import quantize
+from util import quantize
 # import supriya
 
 # server = supriya.Server().boot()

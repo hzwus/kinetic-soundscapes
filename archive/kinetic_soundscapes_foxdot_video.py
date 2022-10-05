@@ -61,7 +61,7 @@ def generate_sound(flow, step=240):
         vol3 = 0.2*intensity3
         
     max_vol = 5
-    p1 >> piano(tone1, dur=1/4, amp=min(vol1, max_vol))
+    p1 >> bell(tone1, dur=1/4, amp=min(vol1, max_vol))
     p2 >> klank(bass1, dur=1/4, amp=min(vol2, max_vol))
 
     tone2 = tone1[1]
@@ -72,7 +72,7 @@ def generate_sound(flow, step=240):
     if dominant_row == 2:
         tone2 = tone1[1] + 4
         bass2 += 2.5
-    p3 >> piano(tone2, dur=1/4, amp=min(vol1, max_vol))
+    p3 >> bell(tone2, dur=1/4, amp=min(vol1, max_vol))
     p4 >> klank(bass2, dur=1/4, amp=min(vol2, max_vol))
     
 
@@ -111,7 +111,7 @@ def draw_hsv(flow):
     return bgr
 
 
-cap = cv2.VideoCapture("video_clips/ribbons_10fps.mp4")
+cap = cv2.VideoCapture("media/waves1.mp4")
 
 suc, prev = cap.read()
 prevgray = cv2.cvtColor(prev, cv2.COLOR_BGR2GRAY)

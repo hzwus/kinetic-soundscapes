@@ -16,20 +16,37 @@ from FoxDot import *
 
 random.seed(time.time())
 
-players_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
-players_melody = [m1, m2, m3, m4]
-synths = [ambi, sinepad]
+synth_dict = {
+    'noise': noise, 'dab': dab, 'varsaw': varsaw, 'lazer': lazer, 'growl': growl, 'bass': bass, 'dirt': dirt, 'crunch': crunch, 'rave': rave, 'scatter': scatter, 'charm': charm, 'bell': bell,
+    'gong': gong, 'soprano': soprano, 'dub': dub, 'viola': viola, 'scratch': scratch, 'klank': klank, 'feel': feel, 'glass': glass, 'soft': soft, 'quin': quin, 'pluck': pluck, 'spark': spark,
+    'blip': blip, 'ripple': ripple, 'creep': creep, 'orient': orient, 'zap': zap, 'marimba': marimba, 'fuzz': fuzz, 'bug': bug, 'pulse': pulse, 'saw': saw, 'snick': snick, 'twang': twang,
+    'karp': karp, 'arpy': arpy, 'nylon': nylon, 'donk': donk, 'squish': squish, 'swell': swell, 'razz': razz, 'sitar': sitar, 'star': star, 'jbass': jbass, 'piano': piano, 'sawbass': sawbass,
+    'prophet': prophet, 'pads': pads, 'pasha': pasha, 'ambi': ambi, 'space': space, 'keys': keys, 'dbass': dbass, 'sinepad': sinepad
+}
+
+
+all_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
+all_melody = [m1, m2, m3, m4, m5, m6, m7, m8]
+
+default_melody_layers = 4
+default_accomp_layers = 4
+
+default_melody_synth = 'marimba'
+default_accomp_synth = 'ambi'
+
 chords = [
             [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
             [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
             [-11, -9, -7, -4,-2,0, 3, 5, 7]
             ]
-max_players = len(players_accomp) + len(players_melody)
+
+show_video = True
+show_flow = True
 
 quantized = True
 playing = False
 global last_frame                                      #creating global variable
-last_frame = numpy.zeros((480, 720, 3), dtype=numpy.uint8)
+# last_frame = numpy.zeros((480, 720, 3), dtype=numpy.uint8)
 
 global selected_video
 selected_video = None
@@ -88,17 +105,23 @@ def compute_flow(img):
                 del trajectory[0]
             new_trajectories.append(trajectory)
             # Newest detected point
-            cv2.circle(img, (int(x), int(y)), 2, (0, 0, 255), -1)
+            if show_flow:
+                cv2.circle(img, (int(x), int(y)), 2, (0, 0, 255), -1)
 
         trajectories = new_trajectories
 
         generate_music(trajectories)
 
         # Draw all the trajectories
-        for i in range(len(trajectories)):
-            cv2.polylines(img, [numpy.int32(trajectories[i])], False, (0, 255, 0), 1)
-        # print([numpy.int32(trajectory) for trajectory in trajectories])
-        # cv2.putText(img, 'track count: %d' % len(trajectories), (20, 50), cv2.FONT_HERSHEY_PLAIN, 1, (0,255,0), 2)
+        if show_video == False:
+            blank = numpy.zeros_like(img)
+            img = blank
+
+        if show_flow == True:
+            for i in range(len(trajectories)):
+                cv2.polylines(img, [numpy.int32(trajectories[i])], False, (0, 255, 0), 1)
+            # print([numpy.int32(trajectory) for trajectory in trajectories])
+            # cv2.putText(img, 'track count: %d' % len(trajectories), (20, 50), cv2.FONT_HERSHEY_PLAIN, 1, (0,255,0), 2)
 
 
     # Update interval - When to update and detect new features
@@ -117,7 +140,16 @@ def compute_flow(img):
             for x, y in numpy.float32(p).reshape(-1, 2):
                 trajectories.append([(x, y)])
 
+    return img
+
 def generate_music(trajectories):
+    global melody_layers, accomp_layers, melody_synth, accomp_synth
+
+    players_accomp = all_accomp[:accomp_layers]
+    players_melody = all_melody[:melody_layers]
+
+    max_players = len(players_accomp) + len(players_melody)
+
     melody_attrs = [None] * len(players_melody)
     accomp_attrs = [None] * len(players_accomp)
         
@@ -174,8 +206,8 @@ def generate_music(trajectories):
         delay = random.choice([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1])
         # print(delay)
 
-        synth_rand = random.choice(synths)
-        players_melody[i] >> marimba(pitch, dur=1/4, amp=min(0.5, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
+        # synth_rand = random.choice(synths)
+        players_melody[i] >> synth_dict[melody_synth](pitch, dur=1/4, amp=min(0.5, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
 
     
     for i in range(len(accomp_attrs)):
@@ -194,8 +226,8 @@ def generate_music(trajectories):
         # delay = random.choice([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1])
         # print(delay)
 
-        synth_rand = random.choice(synths)
-        players_accomp[i] >> synth_rand(pitch, dur=5, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
+        # synth_rand = random.choice(synths)
+        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=5, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
 
 def show_frame(): 
     global h, w
@@ -236,7 +268,7 @@ def show_frame():
         stop_playback()
         return
 
-    frame = image_resize(frame, width=720)
+    frame = image_resize(frame, width=1000)
 
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     if webcam:
@@ -246,7 +278,7 @@ def show_frame():
         img = cv2.flip(img, 1)
     h, w = img.shape[:2]
 
-    compute_flow(img)
+    img = compute_flow(img)
     
     frame_idx += 1
     prev_gray = frame_gray
@@ -315,7 +347,7 @@ if __name__ == '__main__':
         pause_playback()
         cap.release()
         
-        frame = image_resize(frame, width=720)
+        frame = image_resize(frame, width=1000)
         pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
         img = Image.fromarray(pic)
         imgtk = ImageTk.PhotoImage(image=img)
@@ -330,7 +362,7 @@ if __name__ == '__main__':
     root=tkinter.Tk()                                     
     root.title("Kinetic Soundscapes")            #you can give any title
 
-    sidebar = tkinter.LabelFrame(root, width=280, height=720, borderwidth=2, padx=5, pady=5, relief='raised')
+    sidebar = tkinter.LabelFrame(root, width=300, height=1000, borderwidth=2, padx=5, pady=5, relief='raised')
     sidebar.grid(column=0, sticky='ns')
 
      # file dialog
@@ -352,7 +384,7 @@ if __name__ == '__main__':
 
         cap = cv2.VideoCapture(root.filename)
         flag, frame = cap.read()
-        frame = image_resize(frame, width=720)
+        frame = image_resize(frame, width=1000)
         pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
         img = Image.fromarray(pic)
         imgtk = ImageTk.PhotoImage(image=img)
@@ -364,7 +396,7 @@ if __name__ == '__main__':
     select_file_button.grid(column=0, row=0, sticky='we')
 
     selected_file_label = tkinter.Label(sidebar, textvariable=var, font=("Helvetica Bold", 14))
-    selected_file_label.grid(pady=(2,0))
+    selected_file_label.grid(pady=(2,0), columnspan=2, sticky='w')
 
     def use_webcam():
         global webcam
@@ -415,23 +447,23 @@ if __name__ == '__main__':
     reset_motion_btn = tkinter.Button(sidebar_motion, text="Reset", command=reset_motion_settings)
     reset_motion_btn.grid(columnspan=2)
 
-    sidebar_music = tkinter.LabelFrame(sidebar, text="Music Settings", width=280, height=360, padx=5, pady=5)
+    sidebar_music = tkinter.LabelFrame(sidebar, text="Music Settings", width=280, height=500, padx=5, pady=5)
     sidebar_music.grid(sticky='ew', pady=5, columnspan=2)
     sidebar_music.columnconfigure(0, weight = 1)
 
-    player = tkinter.LabelFrame(root, width=1000, height=720, borderwidth=2, relief='raised')
-    player.grid(column=1, row=0)
+    player = tkinter.LabelFrame(root, width=1300, height=1000, borderwidth=2, relief='raised')
+    player.grid(column=1, row=0, sticky='ns')
 
-    viewer = tkinter.LabelFrame(player, width=1000, height=700, borderwidth=2, relief='sunken')
+    viewer = tkinter.LabelFrame(player, width=1300, height=900, borderwidth=2, relief='sunken')
     viewer.grid(row=0)
 
-    playbar = tkinter.LabelFrame(player, width=1000, height=70, borderwidth=0)
+    playbar = tkinter.LabelFrame(player, width=1300, height=100, borderwidth=0)
     playbar.grid(row=1)
 
     lmain = tkinter.Label(viewer)
     lmain.grid()
 
-    img = Image.fromarray(numpy.zeros((480,720,3), numpy.uint8))
+    img = Image.fromarray(numpy.zeros((480,1000,3), numpy.uint8))
     imgtk = ImageTk.PhotoImage(image=img)
     lmain.imgtk = imgtk
     lmain.configure(image=imgtk)
@@ -440,6 +472,11 @@ if __name__ == '__main__':
     scale_label = tkinter.Label(sidebar_music, text="Scale").grid(row=1, column=0, sticky='ws')
     tempo_label = tkinter.Label(sidebar_music, text="Tempo").grid(row=2, column=0, sticky='ws')
     cci_label = tkinter.Label(sidebar_music, text="Chord Change Interval").grid(row=3, column=0, sticky='ws')
+    melody_synth_label = tkinter.Label(sidebar_music, text="Melody Synth").grid(row=6, column=0, sticky='ws')
+    accomp_synth_label = tkinter.Label(sidebar_music, text="Harmony Synth").grid(row=7, column=0, sticky='ws')
+    melody_layers_label = tkinter.Label(sidebar_music, text="Melody Layers").grid(row=4, column=0, sticky='ws')
+    accomp_layers_label = tkinter.Label(sidebar_music, text="Harmony Layers").grid(row=5, column=0, sticky='ws')
+
 
     # dropdown for root
     def set_root(var):
@@ -481,6 +518,63 @@ if __name__ == '__main__':
     cci_slider.set(default_cci)
     cci_slider.grid(row=3, column=1)
 
+    # dropdown for melody synth
+    def set_melody_synth(var):
+        global melody_synth
+        melody_synth = selected_melody_synth.get()
+    selected_melody_synth = tkinter.StringVar()
+    selected_melody_synth.set(default_melody_synth)
+    melody_synth = default_melody_synth
+    melody_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_melody_synth, 'noise', 'dab', 'varsaw', 'lazer', 'growl', 'bass', 'dirt', 'crunch', 'rave', 'scatter', 'charm', 'bell', 'gong', 'soprano', 'dub', 'viola', 'scratch', 'klank', 'feel', 'glass', 'soft', 'quin', 'pluck', 'spark', 'blip', 'ripple', 'creep', 'orient', 'zap', 'marimba', 'fuzz', 'bug', 'pulse', 'saw', 'snick', 'twang', 'karp', 'arpy', 'nylon', 'donk', 'squish', 'swell', 'razz', 'sitar', 'star', 'jbass', 'piano', 'sawbass', 'prophet', 'pads', 'pasha', 'ambi', 'space', 'keys', 'dbass', 'sinepad', command=set_melody_synth)
+    melody_synth_dropdown.grid(row=4, column=1, sticky='ew')
+
+    # dropdown for accomp synth
+    def set_accomp_synth(var):
+        global accomp_synth
+        accomp_synth = selected_accomp_synth.get()
+    selected_accomp_synth = tkinter.StringVar()
+    selected_accomp_synth.set(default_accomp_synth)
+    accomp_synth = default_accomp_synth
+    accomp_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_accomp_synth, 'noise', 'dab', 'varsaw', 'lazer', 'growl', 'bass', 'dirt', 'crunch', 'rave', 'scatter', 'charm', 'bell', 'gong', 'soprano', 'dub', 'viola', 'scratch', 'klank', 'feel', 'glass', 'soft', 'quin', 'pluck', 'spark', 'blip', 'ripple', 'creep', 'orient', 'zap', 'marimba', 'fuzz', 'bug', 'pulse', 'saw', 'snick', 'twang', 'karp', 'arpy', 'nylon', 'donk', 'squish', 'swell', 'razz', 'sitar', 'star', 'jbass', 'piano', 'sawbass', 'prophet', 'pads', 'pasha', 'ambi', 'space', 'keys', 'dbass', 'sinepad', command=set_accomp_synth)
+    accomp_synth_dropdown.grid(row=5, column=1, sticky='ew')
+
+    # slider for melody layers
+    def slide_melody_layers(var):
+        global melody_layers
+        melody_layers = melody_layers_slider.get()
+    melody_layers_slider = tkinter.Scale(sidebar_music, from_=0, to=8, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_melody_layers)
+    melody_layers_slider.set(default_melody_layers)
+    melody_layers_slider.grid(row=6, column=1)
+
+    # slider for accomp layers
+    def slide_accomp_layers(var):
+        global accomp_layers
+        accomp_layers = accomp_layers_slider.get()
+    accomp_layers_slider = tkinter.Scale(sidebar_music, from_=0, to=8, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_accomp_layers)
+    accomp_layers_slider.set(default_accomp_layers)
+    accomp_layers_slider.grid(row=7, column=1)
+
+
+    toggles = tkinter.LabelFrame(playbar, borderwidth=0)
+    toggles.grid(column=0)
+    # toggle video on/off
+    def toggle_video():
+        global show_video
+        show_video = video_toggle_var.get() == 1
+    video_toggle_var = tkinter.IntVar(value=1)
+    video_toggle = tkinter.Checkbutton(toggles, text="Show Video", variable=video_toggle_var, command=toggle_video)
+    video_toggle.grid(column=0, row=0, sticky='w')
+
+    # toggle flow on/off
+    def toggle_flow():
+        global show_flow
+        show_flow = flow_toggle_var.get() == 1
+    flow_toggle_var = tkinter.IntVar(value=1)
+    flow_toggle = tkinter.Checkbutton(toggles, text="Show Flow", variable=flow_toggle_var, command=toggle_flow)
+    flow_toggle.grid(column=1, row=0, sticky='w')
+
+    playstop = tkinter.LabelFrame(playbar, borderwidth=0)
+    playstop.grid()
     # play/pause button
     def switch():
         global playing
@@ -490,13 +584,15 @@ if __name__ == '__main__':
             if selected_video != "" or webcam == True:
                 start_playback()
 
-    play_btn = tkinter.Button(playbar, text="Generate", command=switch, height=3, width=6, relief='raised')
+    play_btn = tkinter.Button(playstop, text="Generate", command=switch, height=3, width=6, relief='raised')
     play_btn.grid(column=0, row=0, pady=5)
 
 
     # stop button
-    stop_btn = tkinter.Button(playbar, text="Stop", command=stop_playback, height=3, width=6, relief='raised')
+    stop_btn = tkinter.Button(playstop, text="Stop", command=stop_playback, height=3, width=6, relief='raised')
     stop_btn.grid(column=1, row=0, pady=5)
+
+
     
     if selected_video != "" or webcam == True:
         show_frame()

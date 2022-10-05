@@ -9,7 +9,7 @@ import math
 from FoxDot import *
 import random
 from functools import cmp_to_key
-from quantize import quantize
+from util import quantize
 
 # NOTE: VARIABLE NAMES WITH 2 LETTERS ARE ONLY TO BE USED FOR FOXDOT PLAYER OBJECTS. 
 # (THEY ARE RESERVED IN THE FOXDOT NAMESPACE)
@@ -73,8 +73,8 @@ root.mainloop()
 
 random.seed(time.time())
 
-players_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
-players_melody = [m1, m2, m3]
+players_accomp = [a1, a2, a3, a4]
+players_melody = [m1, m2, m3, m4, m5, m6, m7, m8]
 synths = [ambi, sinepad]
 # synths = [klank, feel, ambi]
 
