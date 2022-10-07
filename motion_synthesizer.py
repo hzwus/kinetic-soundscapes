@@ -41,7 +41,7 @@ all_melody = [m1, m2, m3, m4, m5, m6, m7, m8]
 default_melody_layers = 4
 default_accomp_layers = 4
 
-default_melody_synth = 'marimba'
+default_melody_synth = 'sinepad'
 default_accomp_synth = 'ambi'
 
 default_cci = 120
@@ -142,6 +142,46 @@ def compute_flow(img):
 
     return img
 
+# compute volume based on magnitude of flow, calibrated according to type of synth, pitch, and flag (melody=0, accomp=1)
+def compute_volume(mag, pitch, synth, flag):
+    vol = mag
+    if flag == 0:
+        if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
+            vol /= 50
+            vol /= 0.3*(pitch+7)
+        elif synth in ("marimba", "gong", "keys", "scatter"):
+            vol /= 80
+        elif synth in ("pads", "charm", "piano"):
+            vol /= 150
+        elif synth == "piano":
+            vol /= 200
+        elif synth in ("nylon"):
+            vol /= 450
+        elif synth in ("bell"):
+            vol /= 900
+        else:
+            vol /= 300
+    elif flag == 1:
+        if synth in ("nylon", "pulse", "saw", "bug", "creep"):
+            vol /= 600
+        elif synth == "glass":
+            vol /= 100
+        elif synth in ("klank", "charm"):
+            vol /= 200
+        elif synth in ("gong", "keys", "scatter"):
+            vol /= 80
+        elif synth in ("piano"):
+            vol /= 150
+        else:
+            vol /= 300
+
+    # account for faster motion from webcam input
+    if webcam == True:
+        vol /= 3
+
+    # print(vol)
+    return vol
+
 def generate_music(trajectories):
     global melody_layers, accomp_layers, melody_synth, accomp_synth
 
@@ -173,37 +213,42 @@ def generate_music(trajectories):
     else:
         trajectories_best = trajectories
 
+
     for i in range(len(trajectories_best)):
+        t = trajectories_best[i]
+        mag = math.dist(t[0], t[-1])
+        pan = (t[-1][0] / w) * 1.6 - 0.8
+
         if i > len(players_accomp)-1:
-            t = trajectories_best[i]
-            mag = math.dist(t[0], t[-1])
-            vol = mag / 200
-            # print(vol)
-            pitch = (h - t[-1][1]) / h * 24 - 12
+            dur = random.choice([2, 1, 1, 0.75, 0.5, 0.5, 0.5, 0.25, 0.25, 0.25, 0.25, 0.25])
+            # pitches = []
+            # for j in range(len(t)):
+            #     pitch = (h - t[j][1]) / h * 24 - 6
+            #     if quantized:
+            #         pitch = round(pitch)
+            #     pitches.append(pitch)
+            pitch = (h - t[-1][1]) / h * 27 - 6
             if quantized:
                 pitch = round(pitch)
-            dur = 1/3
-            pan = (t[-1][0] / w) * 1.6 - 0.8
+            vol = compute_volume(mag, pitch, melody_synth, 0)
             melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan)
         else:
-            t = trajectories_best[i]
-            mag = math.dist(t[0], t[-1])
-            vol = mag / 200
-            # print(vol)
-            pitch = (h - t[-1][1]) / h * 24 - 12
+            pitch = (h - t[-1][1]) / h * 21 - 12
             if quantized:
                 pitch = round(pitch)
+            vol = compute_volume(mag, pitch, accomp_synth, 1)
+      
             dur = 1/3
-            pan = (t[-1][0] / w) * 1.6 - 0.8
             accomp_attrs[i] = (pitch, vol, dur, pan)
-
-        # print(mag)
-    # print(player_attrs)
     
+    # print(player_attrs)
+
+    # rand_melody_idx = random.randint(0, len(melody_attrs)-1)   
+
     for i in range(len(melody_attrs)):
         if melody_attrs[i] is None:
             break
-        pitch = melody_attrs[i][0]
+        pitches = melody_attrs[i][0]
         # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
         # print(pitch)
         # pitch = quantize(pitch, chord)
@@ -215,8 +260,8 @@ def generate_music(trajectories):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_melody[i] >> synth_dict[melody_synth](pitch, dur=1/4, amp=min(0.5, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
-
+        players_melody[i] >> synth_dict[melody_synth](pitches, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0)
+        # print("playing: ", pitches)
     
     for i in range(len(accomp_attrs)):
         if accomp_attrs[i] is None:
@@ -235,7 +280,7 @@ def generate_music(trajectories):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=2, amp=min(0.2, vol), pan=pan, room=0.5, mix=0.2, sus=8, delay=0)
+        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=2, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=6, delay=0)
 
 def show_frame(): 
     global h, w
@@ -308,10 +353,6 @@ def show_frame():
     result.after(10, show_frame)
 
 
-    return ImageTk.PhotoImage(image=img)
-
-
-
 
 if __name__ == '__main__':
     def pause_playback():
@@ -363,6 +404,11 @@ if __name__ == '__main__':
     sidebar = tkinter.LabelFrame(root, width=300, height=VIDEO_W, borderwidth=2, padx=5, pady=5, relief='raised')
     sidebar.grid(column=0, sticky='ns')
 
+    input = tkinter.LabelFrame(sidebar, text="Input", width=300, padx=5, pady=5)
+    input.grid(sticky='ew', columnspan=2)
+    input.columnconfigure(0, weight = 1)
+    input.columnconfigure(1, weight = 1)
+
      # file dialog
     root.filename = ""
     selected_video = ""
@@ -388,17 +434,17 @@ if __name__ == '__main__':
         result.configure(image=imgtk)
         stop_playback()
 
-    select_file_button = tkinter.Button(sidebar, text="Select Video File", command=select_file, height=2)
+    select_file_button = tkinter.Button(input, text="Select Video File", command=select_file, height=2)
     select_file_button.grid(column=0, row=0, sticky='we')
 
-    selected_file_label = tkinter.Label(sidebar, textvariable=var, font=("Helvetica Bold", 14))
+    selected_file_label = tkinter.Label(input, textvariable=var, font=("Helvetica Bold", 14))
     selected_file_label.grid(pady=(2,0), columnspan=2, sticky='w')
 
     def use_webcam():
         global webcam
         webcam = True    
         stop_playback()
-    use_webcam_button = tkinter.Button(sidebar, text="Use Webcam", command=use_webcam, height=2)
+    use_webcam_button = tkinter.Button(input, text="Use Webcam", command=use_webcam, height=2)
     use_webcam_button.grid(column=1, row=0, sticky='we')
 
     sidebar_motion = tkinter.LabelFrame(sidebar, text="Motion Settings", width=280, height=360, padx=5, pady=5)
@@ -414,7 +460,7 @@ if __name__ == '__main__':
     def slide_maxcorners(var):
         global max_corners, default_maxcorners
         max_corners = maxcorners_slider.get()
-    maxcorners_slider = tkinter.Scale(sidebar_motion, from_=2, to=20, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_maxcorners)
+    maxcorners_slider = tkinter.Scale(sidebar_motion, from_=1, to=20, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_maxcorners)
     maxcorners_slider.set(default_maxcorners)
     maxcorners_slider.grid(row=0, column=1)
 
@@ -520,8 +566,18 @@ if __name__ == '__main__':
     selected_melody_synth = tkinter.StringVar()
     selected_melody_synth.set(default_melody_synth)
     melody_synth = default_melody_synth
-    melody_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_melody_synth, 'noise', 'dab', 'varsaw', 'lazer', 'growl', 'bass', 'dirt', 'crunch', 'rave', 'scatter', 'charm', 'bell', 'gong', 'soprano', 'dub', 'viola', 'scratch', 'klank', 'feel', 'glass', 'soft', 'quin', 'pluck', 'spark', 'blip', 'ripple', 'creep', 'orient', 'zap', 'marimba', 'fuzz', 'bug', 'pulse', 'saw', 'snick', 'twang', 'karp', 'arpy', 'nylon', 'donk', 'squish', 'swell', 'razz', 'sitar', 'star', 'jbass', 'piano', 'sawbass', 'prophet', 'pads', 'pasha', 'ambi', 'space', 'keys', 'dbass', 'sinepad', command=set_melody_synth)
+    
+    # MELODIC SYNTHS
+    # percussive: marimba, donk, space, bell, gong, piano, keys
+    # plucked: karp, pluck, sitar
+    # gentle: sinepad, blip
+    # bright: nylon, scatter, charm
+    melody_synth_options = ['sinepad', 'blip',  'nylon', 'scatter', 'charm',  'karp', 'pluck', 'sitar',  'marimba', 'donk', 'space', 'bell', 'gong', 'piano', 'keys']
+    melody_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_melody_synth, *melody_synth_options, command=set_melody_synth)
     melody_synth_dropdown.grid(row=4, column=1, sticky='ew')
+    melody_synth_dropdown['menu'].insert_separator(2)
+    melody_synth_dropdown['menu'].insert_separator(5)
+    melody_synth_dropdown['menu'].insert_separator(8)
 
     # dropdown for accomp synth
     def set_accomp_synth(var):
@@ -530,8 +586,20 @@ if __name__ == '__main__':
     selected_accomp_synth = tkinter.StringVar()
     selected_accomp_synth.set(default_accomp_synth)
     accomp_synth = default_accomp_synth
-    accomp_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_accomp_synth, 'noise', 'dab', 'varsaw', 'lazer', 'growl', 'bass', 'dirt', 'crunch', 'rave', 'scatter', 'charm', 'bell', 'gong', 'soprano', 'dub', 'viola', 'scratch', 'klank', 'feel', 'glass', 'soft', 'quin', 'pluck', 'spark', 'blip', 'ripple', 'creep', 'orient', 'zap', 'marimba', 'fuzz', 'bug', 'pulse', 'saw', 'snick', 'twang', 'karp', 'arpy', 'nylon', 'donk', 'squish', 'swell', 'razz', 'sitar', 'star', 'jbass', 'piano', 'sawbass', 'prophet', 'pads', 'pasha', 'ambi', 'space', 'keys', 'dbass', 'sinepad', command=set_accomp_synth)
+
+    # ACCOMP SYNTHS
+    # gentle:  sinepad, soft, blip, keys, zap
+    # ambient: ambi, klank, glass, space, soprano,
+    # bright: nylon, pulse, scatter, charm, ripple, creep, bug ( no melod), saw, pads
+    # dark: dub, bass, jbass, varsaw, lazer
+    # percussive: bell, gong, pluck, piano
+    accomp_synth_options = ['ambi', 'klank', 'glass', 'space', 'soprano',  'nylon', 'pulse', 'scatter', 'charm', 'ripple', 'creep', 'bug', 'saw', 'pads',  'dub', 'bass', 'jbass', 'varsaw', 'lazer',  'sinepad', 'soft', 'blip', 'keys', 'zap',  'bell', 'gong', 'pluck', 'piano']
+    accomp_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_accomp_synth, *accomp_synth_options, command=set_accomp_synth)
     accomp_synth_dropdown.grid(row=5, column=1, sticky='ew')
+    accomp_synth_dropdown['menu'].insert_separator(5)
+    accomp_synth_dropdown['menu'].insert_separator(15)
+    accomp_synth_dropdown['menu'].insert_separator(21)
+    accomp_synth_dropdown['menu'].insert_separator(27)
 
     # slider for melody layers
     def slide_melody_layers(var):

@@ -44,7 +44,7 @@ chord = chords[0]
 # playback
 selected_video = ""
 cap_exists = False
-playing = False
+playing = True
 frame_idx = 0
 vid_frame = 0
 chord_idx = 0
@@ -169,6 +169,7 @@ class InputSettings(tkinter.LabelFrame):
 
         cap = cv2.VideoCapture(self.filename)
         flag, frame = cap.read()
+        print("flagk is ", flag)
         process_frame(frame)
 
         # stop_playback()
@@ -398,7 +399,6 @@ class MainWindow(tkinter.Frame):
             if webcam:
                 cap = cv2.VideoCapture(0)
             else:
-                print("what the fuck ", selected_video)
                 cap = cv2.VideoCapture(selected_video)
             cap_exists = True
 
