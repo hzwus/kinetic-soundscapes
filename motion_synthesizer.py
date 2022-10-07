@@ -164,16 +164,11 @@ def compute_volume(speed, pitch, synth, flag):
     vol = speed
     if flag == 0:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
-            vol *= 0.5
-            if pitch < -6:
-                print("this should never happen")
-                pitch += 1
-            vol /= ((0.3)*pitch+7)
+            vol *= 1.1
+            vol /= (pitch+12)
         elif synth in ("marimba", "gong", "keys", "scatter"):
             vol *= 1.2
-        elif synth in ("space"):
-            vol *= 0.3
-        elif synth in ("bell", "sitar"):
+        elif synth in ("bell", "sitar", "karp", "space"):
             vol *= 0.1
         elif synth in ("nylon"):
             vol *= 0.05
@@ -181,7 +176,7 @@ def compute_volume(speed, pitch, synth, flag):
             vol *= 0.5
 
     elif flag == 1:
-        if synth in ("nylon", "pulse", "saw", "bug", "creep", "bell", "pads", "ripple"):
+        if synth in ("nylon", "pulse", "saw", "bug", "creep", "bell", "ripple"):
             vol *= 0.03
         elif synth == "glass":
             vol *= 0.3
@@ -196,7 +191,7 @@ def compute_volume(speed, pitch, synth, flag):
 
     # account for faster motion from webcam input
     if webcam == True:
-        vol /= 3
+        vol /= 2
 
     # print(vol)
     return vol
@@ -240,25 +235,69 @@ def generate_music(trajectories):
     # but make sure to account for perspective (star wars hyperspace style motion would result in high variation of direction)
     # one possible way: split the screen into four quadrants and calculate the stdev in each quadrant. then average them
     #                   if a quadrant doesn't have enough data points, ignore it
-    directions = []
-    net_direction_x = 0
-    net_direction_y = 0
+    quadrants = [ [], [], [], [] ]
+    mag_total = 0
     for t in trajectories:
-        fx = t[-1][0] - t[0][0]
-        fy = t[-1][1] - t[0][1]
-        net_direction_x += fx
-        net_direction_y += fy
-        dir = numpy.arctan2(fy, fx) + numpy.pi
-        directions.append(dir)
+        final_x, final_y = t[-1][0], t[-1][1]
+        initial_x, initial_y = t[-2][0], t[-2][1]
 
-    if len(trajectories) >= 2:
-        directions_stdev = statistics.stdev(directions)
+        fx = final_x - initial_x
+        fy = final_y - initial_y
+        mag = math.dist(t[0], t[-1])
+        mag_total += mag
 
-    else:
-        directions_stdev = 0
-    print("std dev of directions is ", directions_stdev)
+        # direction of flow weighted by magnitude
+        dir = (numpy.arctan2(fy, fx) + numpy.pi) * mag
 
+        if final_x < w/2:
+            if final_y < h/2: # SW quadrant
+                quadrants[0].append(dir)
+            else: # NW quadrant
+                quadrants[1].append(dir)
+        else:
+            if final_y < h/2: # SE quadrant
+                quadrants[2].append(dir)
+            else: # NE quadrant
+                quadrants[3].append(dir)
+     
 
+    overall_stdev = 0
+    for quadrant in quadrants:
+        if len(quadrant) >= 2 and mag_total > 0:
+            quadrant = [val / mag_total for val in quadrant]     # normalize weight based on total magnitude
+            quadrant_stdev = statistics.stdev(quadrant)
+            weighted_stdev = (len(quadrant)/len(trajectories))*quadrant_stdev
+            overall_stdev += weighted_stdev
+
+    print("overall std dev of directions is ", 10*overall_stdev)
+
+    melody_note_lengths = [0.25, 0.25]
+    if overall_stdev > 0.05:
+        melody_note_lengths.append(0.5)
+    if overall_stdev > 0.1:
+        melody_note_lengths.append(0.5)
+    if overall_stdev > 0.25:
+        melody_note_lengths.append(1)
+    if overall_stdev > 0.5:
+        melody_note_lengths.append(0.75)
+    if overall_stdev > 1:
+        melody_note_lengths.extend([1, 0.75, 0.5, 0.25, 0.25])
+    if overall_stdev > 2:
+        melody_note_lengths.extend([1/3, 3/4, 1])
+
+    accomp_note_lengths = [4]
+    if overall_stdev > 0.05:
+        accomp_note_lengths.append(2)
+    if overall_stdev > 0.1:
+        accomp_note_lengths.append(1)
+    if overall_stdev > 0.25:
+        accomp_note_lengths.append(0.5)
+    if overall_stdev > 0.5:
+        accomp_note_lengths.append(0.5)
+    if overall_stdev > 1:
+        accomp_note_lengths.extend([0.5, 1, 2])
+    if overall_stdev > 2:
+        accomp_note_lengths.extend([0.25, 2, 3])
 
     for i in range(len(trajectories_best)):
         t = trajectories_best[i]
@@ -267,7 +306,7 @@ def generate_music(trajectories):
         pan = (t[-1][0] / w) * 1.6 - 0.8
 
         if i > len(players_accomp)-1:
-            dur = random.choice([2, 1, 1, 0.75, 0.5, 0.5, 0.5, 0.25, 0.25, 0.25, 0.25, 0.25])
+            dur = random.choice(melody_note_lengths)
             # pitches = []
             # for j in range(len(t)):
             #     pitch = (h - t[j][1]) / h * 24 - 6
@@ -285,7 +324,7 @@ def generate_music(trajectories):
                 pitch = round(pitch)
             vol = compute_volume(speed, pitch, accomp_synth, 1)
       
-            dur = 1/3
+            dur = random.choice(accomp_note_lengths)
             accomp_attrs[i] = (pitch, vol, dur, pan)
     
     # print(player_attrs)
@@ -327,7 +366,7 @@ def generate_music(trajectories):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=2, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=6, delay=0)
+        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=6, delay=0)
 
     return trajectories_best_indices
 
