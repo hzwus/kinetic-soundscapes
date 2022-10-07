@@ -31,7 +31,7 @@ lk_params = dict(winSize  = (15, 15),
 
 default_maxcorners = 12
 default_detectinterval = 4
-default_trajlen = 14
+default_trajlen = 30
 trajectories = []
 
 # music
@@ -142,38 +142,46 @@ def compute_flow(img):
 
     return img
 
-# compute volume based on magnitude of flow, calibrated according to type of synth, pitch, and flag (melody=0, accomp=1)
-def compute_volume(mag, pitch, synth, flag):
-    vol = mag
+def compute_path_dist(trajectory):
+    dist = 0
+    for i in range(1, len(trajectory)):
+        dist += math.dist(trajectory[i], trajectory[i-1])
+    return dist
+
+# compute volume based on speed of flow, calibrated according to type of synth, pitch, and flag (melody=0, accomp=1)
+def compute_volume(speed, pitch, synth, flag):
+    vol = speed
     if flag == 0:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
-            vol /= 50
-            vol /= 0.3*(pitch+7)
+            vol *= 0.5
+            if pitch < -6:
+                print("this should never happen")
+                pitch += 1
+            vol /= ((0.3)*pitch+7)
         elif synth in ("marimba", "gong", "keys", "scatter"):
-            vol /= 80
-        elif synth in ("pads", "charm", "piano"):
-            vol /= 150
-        elif synth == "piano":
-            vol /= 200
+            vol *= 1.2
+        elif synth in ("space"):
+            vol *= 0.3
+        elif synth in ("bell", "sitar"):
+            vol *= 0.1
         elif synth in ("nylon"):
-            vol /= 450
-        elif synth in ("bell"):
-            vol /= 900
+            vol *= 0.05
         else:
-            vol /= 300
+            vol *= 0.5
+
     elif flag == 1:
-        if synth in ("nylon", "pulse", "saw", "bug", "creep"):
-            vol /= 600
+        if synth in ("nylon", "pulse", "saw", "bug", "creep", "bell", "pads", "ripple"):
+            vol *= 0.03
         elif synth == "glass":
-            vol /= 100
+            vol *= 0.3
         elif synth in ("klank", "charm"):
-            vol /= 200
-        elif synth in ("gong", "keys", "scatter"):
-            vol /= 80
+            vol *= 0.2
+        elif synth in ("gong", "keys", "sinepad"):
+            vol *= 0.7
         elif synth in ("piano"):
-            vol /= 150
+            vol *= 0.1
         else:
-            vol /= 300
+            vol *= 0.05
 
     # account for faster motion from webcam input
     if webcam == True:
@@ -214,9 +222,12 @@ def generate_music(trajectories):
         trajectories_best = trajectories
 
 
+
     for i in range(len(trajectories_best)):
         t = trajectories_best[i]
-        mag = math.dist(t[0], t[-1])
+        dist = compute_path_dist(t)
+        speed = dist / (len(t))
+        
         pan = (t[-1][0] / w) * 1.6 - 0.8
 
         if i > len(players_accomp)-1:
@@ -230,13 +241,13 @@ def generate_music(trajectories):
             pitch = (h - t[-1][1]) / h * 27 - 6
             if quantized:
                 pitch = round(pitch)
-            vol = compute_volume(mag, pitch, melody_synth, 0)
+            vol = compute_volume(speed, pitch, melody_synth, 0)
             melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan)
         else:
             pitch = (h - t[-1][1]) / h * 21 - 12
             if quantized:
                 pitch = round(pitch)
-            vol = compute_volume(mag, pitch, accomp_synth, 1)
+            vol = compute_volume(speed, pitch, accomp_synth, 1)
       
             dur = 1/3
             accomp_attrs[i] = (pitch, vol, dur, pan)
@@ -476,7 +487,7 @@ if __name__ == '__main__':
     def slide_detectinterval(var):
         global detect_interval, default_detectinterval
         detect_interval = detectinterval_slider.get()
-    detectinterval_slider = tkinter.Scale(sidebar_motion, from_=1, to=50, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_detectinterval)
+    detectinterval_slider = tkinter.Scale(sidebar_motion, from_=1, to=8, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_detectinterval)
     detectinterval_slider.set(default_detectinterval)
     detectinterval_slider.grid(row=2, column=1)
 
