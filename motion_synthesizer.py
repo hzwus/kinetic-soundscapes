@@ -1,12 +1,14 @@
 
 import numpy
 import math
+import statistics
 import time
 import random
 from os import getcwd
 from os.path import normpath, basename
 from functools import cmp_to_key
 from util import quantize, image_resize
+
 
 import cv2
 from PIL import Image, ImageTk
@@ -110,7 +112,11 @@ def compute_flow(img):
 
         trajectories = new_trajectories
 
-        generate_music(trajectories)
+        # mark the indices of the trajectories that are being used to play notes
+        musical_trajectories = generate_music(trajectories)
+
+        trajectories_melody = musical_trajectories[:melody_layers]
+        trajectories_accomp = musical_trajectories[melody_layers:]
 
         # Draw all the trajectories
         if show_video == False:
@@ -119,7 +125,12 @@ def compute_flow(img):
 
         if show_flow == True:
             for i in range(len(trajectories)):
-                cv2.polylines(img, [numpy.int32(trajectories[i])], False, (0, 255, 0), 1)
+                if i in trajectories_melody:
+                    cv2.polylines(img, [numpy.int32(trajectories[i])], False, (255, 187, 0), 3)
+                elif i in trajectories_accomp:
+                    cv2.polylines(img, [numpy.int32(trajectories[i])], False, (0, 187, 255), 3)
+                else:
+                    cv2.polylines(img, [numpy.int32(trajectories[i])], False, (255, 255, 255), 1)
             # print([numpy.int32(trajectory) for trajectory in trajectories])
             # cv2.putText(img, 'track count: %d' % len(trajectories), (20, 50), cv2.FONT_HERSHEY_PLAIN, 1, (0,255,0), 2)
 
@@ -210,10 +221,14 @@ def generate_music(trajectories):
 
         
     # print(len(trajectories))
+    trajectories_best_indices = []
     if len(trajectories) > max_players:
-        trajectories_sorted = sorted(trajectories, key=cmp_to_key(lambda t1, t2: math.dist(t2[0], t2[-1]) - math.dist(t1[0], t1[-1])))
+        # trajectories_sorted = sorted(trajectories, key=cmp_to_key(lambda t1, t2: math.dist(t2[0], t2[-1]) - math.dist(t1[0], t1[-1])))
 
-        trajectories_best = trajectories_sorted[:max_players]
+        trajectories_sorted = [(trajectory, idx) for idx, trajectory in sorted(enumerate(trajectories), key=cmp_to_key(lambda t1, t2: math.dist(t2[1][0], t2[1][-1]) - math.dist(t1[1][0], t1[1][-1])))]
+        trajectories_best = [trajectory[0] for trajectory in trajectories_sorted][:max_players]
+        trajectories_best_indices = [trajectory[1] for trajectory in trajectories_sorted][:max_players]
+        # print("BEST INDICES", trajectories_best_indices)
         # trajectories_best = random.sample(trajectories, max_players)
         # for t1 in trajectories_best:
         #     print(math.dist(t1[0], t1[-1]))
@@ -221,13 +236,34 @@ def generate_music(trajectories):
     else:
         trajectories_best = trajectories
 
+    # map variation in direction to variation in note length
+    # but make sure to account for perspective (star wars hyperspace style motion would result in high variation of direction)
+    # one possible way: split the screen into four quadrants and calculate the stdev in each quadrant. then average them
+    #                   if a quadrant doesn't have enough data points, ignore it
+    directions = []
+    net_direction_x = 0
+    net_direction_y = 0
+    for t in trajectories:
+        fx = t[-1][0] - t[0][0]
+        fy = t[-1][1] - t[0][1]
+        net_direction_x += fx
+        net_direction_y += fy
+        dir = numpy.arctan2(fy, fx) + numpy.pi
+        directions.append(dir)
+
+    if len(trajectories) >= 2:
+        directions_stdev = statistics.stdev(directions)
+
+    else:
+        directions_stdev = 0
+    print("std dev of directions is ", directions_stdev)
+
 
 
     for i in range(len(trajectories_best)):
         t = trajectories_best[i]
         dist = compute_path_dist(t)
         speed = dist / (len(t))
-        
         pan = (t[-1][0] / w) * 1.6 - 0.8
 
         if i > len(players_accomp)-1:
@@ -292,6 +328,8 @@ def generate_music(trajectories):
 
         # synth_rand = random.choice(synths)
         players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=2, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=6, delay=0)
+
+    return trajectories_best_indices
 
 def show_frame(): 
     global h, w
