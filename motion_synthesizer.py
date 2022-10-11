@@ -1,5 +1,5 @@
 
-import numpy
+import numpy as np
 import math
 import statistics
 import time
@@ -12,18 +12,18 @@ from util import quantize, image_resize
 
 import cv2
 from PIL import Image, ImageTk
-import tkinter
+import tkinter as tk
 import tkinter.filedialog
-from FoxDot import *
+import FoxDot as fd
 
 random.seed(time.time())
 
 synth_dict = {
-    'noise': noise, 'dab': dab, 'varsaw': varsaw, 'lazer': lazer, 'growl': growl, 'bass': bass, 'dirt': dirt, 'crunch': crunch, 'rave': rave, 'scatter': scatter, 'charm': charm, 'bell': bell,
-    'gong': gong, 'soprano': soprano, 'dub': dub, 'viola': viola, 'scratch': scratch, 'klank': klank, 'feel': feel, 'glass': glass, 'soft': soft, 'quin': quin, 'pluck': pluck, 'spark': spark,
-    'blip': blip, 'ripple': ripple, 'creep': creep, 'orient': orient, 'zap': zap, 'marimba': marimba, 'fuzz': fuzz, 'bug': bug, 'pulse': pulse, 'saw': saw, 'snick': snick, 'twang': twang,
-    'karp': karp, 'arpy': arpy, 'nylon': nylon, 'donk': donk, 'squish': squish, 'swell': swell, 'razz': razz, 'sitar': sitar, 'star': star, 'jbass': jbass, 'piano': piano, 'sawbass': sawbass,
-    'prophet': prophet, 'pads': pads, 'pasha': pasha, 'ambi': ambi, 'space': space, 'keys': keys, 'dbass': dbass, 'sinepad': sinepad
+    'noise': fd.noise, 'dab': fd.dab, 'varsaw': fd.varsaw, 'lazer': fd.lazer, 'growl': fd.growl, 'bass': fd.bass, 'dirt': fd.dirt, 'crunch': fd.crunch, 'rave': fd.rave, 'scatter': fd.scatter, 'charm': fd.charm, 'bell': fd.bell,
+    'gong': fd.gong, 'soprano': fd.soprano, 'dub': fd.dub, 'viola': fd.viola, 'scratch': fd.scratch, 'klank': fd.klank, 'feel': fd.feel, 'glass': fd.glass, 'soft': fd.soft, 'quin': fd.quin, 'pluck': fd.pluck, 'spark': fd.spark,
+    'blip': fd.blip, 'ripple': fd.ripple, 'creep': fd.creep, 'orient': fd.orient, 'zap': fd.zap, 'marimba': fd.marimba, 'fuzz': fd.fuzz, 'bug': fd.bug, 'pulse': fd.pulse, 'saw': fd.saw, 'snick': fd.snick, 'twang': fd.twang,
+    'karp': fd.karp, 'arpy': fd.arpy, 'nylon': fd.nylon, 'donk': fd.donk, 'squish': fd.squish, 'swell': fd.swell, 'razz': fd.razz, 'sitar': fd.sitar, 'star': fd.star, 'jbass': fd.jbass, 'piano': fd.piano, 'sawbass': fd.sawbass,
+    'prophet': fd.prophet, 'pads': fd.pads, 'pasha': fd.pasha, 'ambi': fd.ambi, 'space': fd.space, 'keys': fd.keys, 'dbass': fd.dbass, 'sinepad': fd.sinepad
 }
 
 # motion
@@ -32,13 +32,13 @@ lk_params = dict(winSize  = (15, 15),
                 criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
 default_maxcorners = 12
-default_detectinterval = 4
+default_detectinterval = 3
 default_trajlen = 30
 trajectories = []
 
 # music
-all_accomp = [a1, a2, a3, a4, a5, a6, a7, a8]
-all_melody = [m1, m2, m3, m4, m5, m6, m7, m8]
+all_accomp = [fd.a1, fd.a2, fd.a3, fd.a4, fd.a5, fd.a6, fd.a7, fd.a8]
+all_melody = [fd.m1, fd.m2, fd.m3, fd.m4, fd.m5, fd.m6, fd.m7, fd.m8]
 
 default_melody_layers = 4
 default_accomp_layers = 4
@@ -71,7 +71,7 @@ VIDEO_W = 1000
 VIDEO_H = 700
 
 global last_frame                                      #creating global variable
-# last_frame = numpy.zeros((480, 720, 3), dtype=numpy.uint8)
+# last_frame = np.zeros((480, 720, 3), dtype=np.uint8)
 
 def convert_for_tk(frame):
     frame = image_resize(frame, width=VIDEO_W)
@@ -90,7 +90,7 @@ def compute_flow(img):
     # Calculate optical flow for a sparse feature set using the iterative Lucas-Kanade Method
     if len(trajectories) > 0:
         img0, img1 = prev_gray, frame_gray
-        pts0 = numpy.float32([trajectory[-1] for trajectory in trajectories]).reshape(-1, 1, 2)
+        pts0 = np.float32([trajectory[-1] for trajectory in trajectories]).reshape(-1, 1, 2)
         pts1, _st, _err = cv2.calcOpticalFlowPyrLK(img0, img1, pts0, None, **lk_params)
         pts0r, _st, _err = cv2.calcOpticalFlowPyrLK(img1, img0, pts1, None, **lk_params)
         d = abs(pts0-pts0r).reshape(-1, 2).max(-1)
@@ -120,35 +120,42 @@ def compute_flow(img):
 
         # Draw all the trajectories
         if show_video == False:
-            blank = numpy.zeros_like(img)
+            blank = np.zeros_like(img)
             img = blank
 
         if show_flow == True:
+            if show_video == False:
+                alpha = 1.0
+            else:
+                alpha = 0.65
+            overlay = img.copy()
             for i in range(len(trajectories)):
                 if i in trajectories_melody:
-                    cv2.polylines(img, [numpy.int32(trajectories[i])], False, (255, 187, 0), 3)
+                    cv2.polylines(overlay, [np.int32(trajectories[i])], False, (0, 187, 255), 5)
                 elif i in trajectories_accomp:
-                    cv2.polylines(img, [numpy.int32(trajectories[i])], False, (0, 187, 255), 3)
+                    cv2.polylines(overlay, [np.int32(trajectories[i])], False, (255, 187, 0), 5)
                 else:
-                    cv2.polylines(img, [numpy.int32(trajectories[i])], False, (255, 255, 255), 1)
-            # print([numpy.int32(trajectory) for trajectory in trajectories])
+                    cv2.polylines(overlay, [np.int32(trajectories[i])], False, (255, 255, 255), 1)
+            new_img = cv2.addWeighted(overlay, alpha, img, 1-alpha, 0)
+            img = new_img
+            # print([np.int32(trajectory) for trajectory in trajectories])
             # cv2.putText(img, 'track count: %d' % len(trajectories), (20, 50), cv2.FONT_HERSHEY_PLAIN, 1, (0,255,0), 2)
 
 
     # Update interval - When to update and detect new features
     if frame_idx % detect_interval == 0:
-        mask = numpy.zeros_like(frame_gray)
+        mask = np.zeros_like(frame_gray)
         mask[:] = 255
 
         # Lastest point in latest trajectory
-        for x, y in [numpy.int32(trajectory[-1]) for trajectory in trajectories]:
+        for x, y in [np.int32(trajectory[-1]) for trajectory in trajectories]:
             cv2.circle(mask, (x, y), 5, 0, -1)
 
         # Detect the good features to track
         p = cv2.goodFeaturesToTrack(frame_gray, mask = mask, **feature_params)
         if p is not None:
             # If good features can be tracked - add that to the trajectories
-            for x, y in numpy.float32(p).reshape(-1, 2):
+            for x, y in np.float32(p).reshape(-1, 2):
                 trajectories.append([(x, y)])
 
     return img
@@ -168,7 +175,7 @@ def compute_volume(speed, pitch, synth, flag):
             vol /= (pitch+12)
         elif synth in ("marimba", "gong", "keys", "scatter"):
             vol *= 1.2
-        elif synth in ("bell", "sitar", "karp", "space"):
+        elif synth in ("bell", "sitar", "karp", "space", "pluck"):
             vol *= 0.1
         elif synth in ("nylon"):
             vol *= 0.05
@@ -247,7 +254,7 @@ def generate_music(trajectories):
         mag_total += mag
 
         # direction of flow weighted by magnitude
-        dir = (numpy.arctan2(fy, fx) + numpy.pi) * mag
+        dir = (np.arctan2(fy, fx) + np.pi) * mag
 
         if final_x < w/2:
             if final_y < h/2: # SW quadrant
@@ -447,20 +454,20 @@ if __name__ == '__main__':
         global playing
         playing = False
         play_btn.config(text="Generate")
-        Clock.clear()
-        root_dropdown.config(state=tkinter.NORMAL)
-        scale_dropdown.config(state=tkinter.NORMAL)
-        melody_synth_dropdown.config(state=tkinter.NORMAL)
-        accomp_synth_dropdown.config(state=tkinter.NORMAL)
+        fd.Clock.clear()
+        root_dropdown.config(state=tk.NORMAL)
+        scale_dropdown.config(state=tk.NORMAL)
+        melody_synth_dropdown.config(state=tk.NORMAL)
+        accomp_synth_dropdown.config(state=tk.NORMAL)
 
     def start_playback():
         global playing, selected_video, webcam
         playing = True
         play_btn.config(text="Pause")
-        root_dropdown.config(state=tkinter.DISABLED)
-        scale_dropdown.config(state=tkinter.DISABLED)
-        melody_synth_dropdown.config(state=tkinter.DISABLED)
-        accomp_synth_dropdown.config(state=tkinter.DISABLED)
+        root_dropdown.config(state=tk.DISABLED)
+        scale_dropdown.config(state=tk.DISABLED)
+        melody_synth_dropdown.config(state=tk.DISABLED)
+        accomp_synth_dropdown.config(state=tk.DISABLED)
 
         show_frame()
 
@@ -476,7 +483,7 @@ if __name__ == '__main__':
         flag, frame = cap.read()
         if webcam:
             h, w = frame.shape[:2]
-            frame = numpy.zeros((h, w, 3), dtype=numpy.uint8)
+            frame = np.zeros((h, w, 3), dtype=np.uint8)
         
         pause_playback()
         cap.release()
@@ -486,13 +493,13 @@ if __name__ == '__main__':
         trajectories = []
         cap_exists = False
         
-    root=tkinter.Tk()                                     
+    root=tk.Tk()                                     
     root.title("Kinetic Soundscapes")            #you can give any title
 
-    sidebar = tkinter.LabelFrame(root, width=300, height=VIDEO_W, borderwidth=2, padx=5, pady=5, relief='raised')
+    sidebar = tk.LabelFrame(root, width=300, height=VIDEO_W, borderwidth=2, padx=5, pady=5, relief='raised')
     sidebar.grid(column=0, sticky='ns')
 
-    input = tkinter.LabelFrame(sidebar, text="Input", width=300, padx=5, pady=5)
+    input = tk.LabelFrame(sidebar, text="Input", width=300, padx=5, pady=5)
     input.grid(sticky='ew', columnspan=2)
     input.columnconfigure(0, weight = 1)
     input.columnconfigure(1, weight = 1)
@@ -500,13 +507,13 @@ if __name__ == '__main__':
      # file dialog
     root.filename = ""
     selected_video = ""
-    var = tkinter.StringVar()
+    var = tk.StringVar()
 
     def select_file():
         global selected_video, webcam
         webcam = False
         pause_playback()
-        root.filename = tkinter.filedialog.askopenfilename(initialdir=getcwd()+'/media', title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
+        root.filename = tk.filedialog.askopenfilename(initialdir=getcwd()+'/media', title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
         if root.filename != "":
             selected_video = root.filename
         print("selected_video is ", selected_video)
@@ -522,33 +529,33 @@ if __name__ == '__main__':
         result.configure(image=imgtk)
         stop_playback()
 
-    select_file_button = tkinter.Button(input, text="Select Video File", command=select_file, height=2)
+    select_file_button = tk.Button(input, text="Select Video File", command=select_file, height=2)
     select_file_button.grid(column=0, row=0, sticky='we')
 
-    selected_file_label = tkinter.Label(input, textvariable=var, font=("Helvetica Bold", 14))
+    selected_file_label = tk.Label(input, textvariable=var, font=("Helvetica Bold", 14))
     selected_file_label.grid(pady=(2,0), columnspan=2, sticky='w')
 
     def use_webcam():
         global webcam
         webcam = True    
         stop_playback()
-    use_webcam_button = tkinter.Button(input, text="Use Webcam", command=use_webcam, height=2)
+    use_webcam_button = tk.Button(input, text="Use Webcam", command=use_webcam, height=2)
     use_webcam_button.grid(column=1, row=0, sticky='we')
 
-    sidebar_motion = tkinter.LabelFrame(sidebar, text="Motion Settings", width=280, height=360, padx=5, pady=5)
+    sidebar_motion = tk.LabelFrame(sidebar, text="Motion Settings", width=280, height=360, padx=5, pady=5)
     sidebar_motion.grid(sticky='ew', pady=5, columnspan=2)
 
     sidebar_motion.columnconfigure(0, weight = 1)
 
-    maxcorners_label = tkinter.Label(sidebar_motion, text="Max Corners").grid(row=0, column=0, sticky='sw')
-    trajlen_label = tkinter.Label(sidebar_motion, text="Trajectory Length").grid(row=1, column=0,  sticky='sw')
-    detectinterval_label = tkinter.Label(sidebar_motion, text="Detect Interval").grid(row=2, column=0, sticky='sw')
+    maxcorners_label = tk.Label(sidebar_motion, text="Max Corners").grid(row=0, column=0, sticky='sw')
+    trajlen_label = tk.Label(sidebar_motion, text="Trajectory Length").grid(row=1, column=0,  sticky='sw')
+    detectinterval_label = tk.Label(sidebar_motion, text="Detect Interval").grid(row=2, column=0, sticky='sw')
 
     # slider for max corners
     def slide_maxcorners(var):
         global max_corners, default_maxcorners
         max_corners = maxcorners_slider.get()
-    maxcorners_slider = tkinter.Scale(sidebar_motion, from_=1, to=20, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_maxcorners)
+    maxcorners_slider = tk.Scale(sidebar_motion, from_=1, to=20, orient=tk.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_maxcorners)
     maxcorners_slider.set(default_maxcorners)
     maxcorners_slider.grid(row=0, column=1)
 
@@ -556,7 +563,7 @@ if __name__ == '__main__':
     def slide_trajlen(var):
         global trajectory_len, default_trajlen
         trajectory_len = trajlen_slider.get()
-    trajlen_slider = tkinter.Scale(sidebar_motion, from_=2, to=160, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_trajlen)
+    trajlen_slider = tk.Scale(sidebar_motion, from_=2, to=160, orient=tk.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_trajlen)
     trajlen_slider.set(default_trajlen)
     trajlen_slider.grid(row=1, column=1)
 
@@ -564,7 +571,7 @@ if __name__ == '__main__':
     def slide_detectinterval(var):
         global detect_interval, default_detectinterval
         detect_interval = detectinterval_slider.get()
-    detectinterval_slider = tkinter.Scale(sidebar_motion, from_=1, to=8, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_detectinterval)
+    detectinterval_slider = tk.Scale(sidebar_motion, from_=1, to=8, orient=tk.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_detectinterval)
     detectinterval_slider.set(default_detectinterval)
     detectinterval_slider.grid(row=2, column=1)
 
@@ -573,47 +580,47 @@ if __name__ == '__main__':
         maxcorners_slider.set(default_maxcorners)
         trajlen_slider.set(default_trajlen)
         detectinterval_slider.set(default_detectinterval)
-    reset_motion_btn = tkinter.Button(sidebar_motion, text="Reset", command=reset_motion_settings)
+    reset_motion_btn = tk.Button(sidebar_motion, text="Reset", command=reset_motion_settings)
     reset_motion_btn.grid(columnspan=2)
 
-    sidebar_music = tkinter.LabelFrame(sidebar, text="Music Settings", width=280, height=500, padx=5, pady=5)
+    sidebar_music = tk.LabelFrame(sidebar, text="Music Settings", width=280, height=500, padx=5, pady=5)
     sidebar_music.grid(sticky='ew', pady=5, columnspan=2)
     sidebar_music.columnconfigure(0, weight = 1)
 
-    player = tkinter.LabelFrame(root, width=1300, height=1000, borderwidth=2, relief='raised')
+    player = tk.LabelFrame(root, width=1300, height=1000, borderwidth=2, relief='raised')
     player.grid(column=1, row=0, sticky='ns')
 
-    viewer = tkinter.LabelFrame(player, width=1300, height=900, borderwidth=2, relief='sunken')
+    viewer = tk.LabelFrame(player, width=1300, height=900, borderwidth=2, relief='sunken')
     viewer.grid(row=0)
 
-    playbar = tkinter.LabelFrame(player, width=1300, height=100, borderwidth=0)
+    playbar = tk.LabelFrame(player, width=1300, height=100, borderwidth=0)
     playbar.grid(row=1)
 
-    result = tkinter.Label(viewer)
+    result = tk.Label(viewer)
     result.grid()
 
-    img = Image.fromarray(numpy.zeros((480,VIDEO_W,3), numpy.uint8))
+    img = Image.fromarray(np.zeros((480,VIDEO_W,3), np.uint8))
     imgtk = ImageTk.PhotoImage(image=img)
     result.imgtk = imgtk
     result.configure(image=imgtk)
 
-    root_label = tkinter.Label(sidebar_music, text="Root").grid(row=0, column=0, sticky='ws')
-    scale_label = tkinter.Label(sidebar_music, text="Scale").grid(row=1, column=0, sticky='ws')
-    tempo_label = tkinter.Label(sidebar_music, text="Tempo").grid(row=2, column=0, sticky='ws')
-    cci_label = tkinter.Label(sidebar_music, text="Chord Change Interval").grid(row=3, column=0, sticky='ws')
-    melody_synth_label = tkinter.Label(sidebar_music, text="Melody Synth").grid(row=4, column=0, sticky='ws')
-    accomp_synth_label = tkinter.Label(sidebar_music, text="Harmony Synth").grid(row=5, column=0, sticky='ws')
-    melody_layers_label = tkinter.Label(sidebar_music, text="Melody Layers").grid(row=6, column=0, sticky='ws')
-    accomp_layers_label = tkinter.Label(sidebar_music, text="Harmony Layers").grid(row=7, column=0, sticky='ws')
+    root_label = tk.Label(sidebar_music, text="Root").grid(row=0, column=0, sticky='ws')
+    scale_label = tk.Label(sidebar_music, text="Scale").grid(row=1, column=0, sticky='ws')
+    tempo_label = tk.Label(sidebar_music, text="Tempo").grid(row=2, column=0, sticky='ws')
+    cci_label = tk.Label(sidebar_music, text="Chord Change Interval").grid(row=3, column=0, sticky='ws')
+    melody_synth_label = tk.Label(sidebar_music, text="Melody Synth").grid(row=4, column=0, sticky='ws')
+    accomp_synth_label = tk.Label(sidebar_music, text="Harmony Synth").grid(row=5, column=0, sticky='ws')
+    melody_layers_label = tk.Label(sidebar_music, text="Melody Layers").grid(row=6, column=0, sticky='ws')
+    accomp_layers_label = tk.Label(sidebar_music, text="Harmony Layers").grid(row=7, column=0, sticky='ws')
 
 
     # dropdown for root
     def set_root(var):
-        Root.default.set(selected_root.get())
+        fd.Root.default.set(selected_root.get())
         print("setting root to ", Root.default.char)
-    selected_root = tkinter.StringVar()
+    selected_root = tk.StringVar()
     selected_root.set('C')
-    root_dropdown = tkinter.OptionMenu(sidebar_music, selected_root, 'C', 'C#', 'D', 'D#', 'E', 'E#', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'B#', command=set_root)
+    root_dropdown = tk.OptionMenu(sidebar_music, selected_root, 'C', 'C#', 'D', 'D#', 'E', 'E#', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'B#', command=set_root)
     root_dropdown.grid(row=0, column=1, sticky='ew')
  
 
@@ -624,18 +631,18 @@ if __name__ == '__main__':
             quantized = False
         else:
             quantized = True
-            Scale.default.set(selected_scale.get())
+            fd.Scale.default.set(selected_scale.get())
         print("setting scale to ", Scale.default.name)
-    selected_scale = tkinter.StringVar()
+    selected_scale = tk.StringVar()
     selected_scale.set('major')
-    scale_dropdown = tkinter.OptionMenu(sidebar_music, selected_scale, 'major', 'minor', 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi', command=set_scale)
+    scale_dropdown = tk.OptionMenu(sidebar_music, selected_scale, 'major', 'minor', 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi', command=set_scale)
     scale_dropdown['menu'].insert_separator(3)
     scale_dropdown.grid(row=1, column=1, sticky='ew')
 
     # slider for tempo
     def slide_bpm(var):
-        Clock.update_tempo_now(bpm_slider.get())
-    bpm_slider = tkinter.Scale(sidebar_music, from_=20, to=220, orient=tkinter.HORIZONTAL, resolution = 4, length = 150, sliderlength=20, command=slide_bpm)
+        fd.Clock.update_tempo_now(bpm_slider.get())
+    bpm_slider = tk.Scale(sidebar_music, from_=20, to=220, orient=tk.HORIZONTAL, resolution = 4, length = 150, sliderlength=20, command=slide_bpm)
     bpm_slider.set(120)
     bpm_slider.grid(row=2, column=1)
 
@@ -643,7 +650,7 @@ if __name__ == '__main__':
     def slide_cci(var):
         global chord_change_interval
         chord_change_interval = cci_slider.get()
-    cci_slider = tkinter.Scale(sidebar_music, from_=10, to=500, orient=tkinter.HORIZONTAL, resolution = 5, length = 150, sliderlength=20, command=slide_cci)
+    cci_slider = tk.Scale(sidebar_music, from_=10, to=500, orient=tk.HORIZONTAL, resolution = 5, length = 150, sliderlength=20, command=slide_cci)
     cci_slider.set(default_cci)
     cci_slider.grid(row=3, column=1)
 
@@ -651,7 +658,7 @@ if __name__ == '__main__':
     def set_melody_synth(var):
         global melody_synth
         melody_synth = selected_melody_synth.get()
-    selected_melody_synth = tkinter.StringVar()
+    selected_melody_synth = tk.StringVar()
     selected_melody_synth.set(default_melody_synth)
     melody_synth = default_melody_synth
     
@@ -661,7 +668,7 @@ if __name__ == '__main__':
     # gentle: sinepad, blip
     # bright: nylon, scatter, charm
     melody_synth_options = ['sinepad', 'blip',  'nylon', 'scatter', 'charm',  'karp', 'pluck', 'sitar',  'marimba', 'donk', 'space', 'bell', 'gong', 'piano', 'keys']
-    melody_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_melody_synth, *melody_synth_options, command=set_melody_synth)
+    melody_synth_dropdown = tk.OptionMenu(sidebar_music, selected_melody_synth, *melody_synth_options, command=set_melody_synth)
     melody_synth_dropdown.grid(row=4, column=1, sticky='ew')
     melody_synth_dropdown['menu'].insert_separator(2)
     melody_synth_dropdown['menu'].insert_separator(5)
@@ -671,7 +678,7 @@ if __name__ == '__main__':
     def set_accomp_synth(var):
         global accomp_synth
         accomp_synth = selected_accomp_synth.get()
-    selected_accomp_synth = tkinter.StringVar()
+    selected_accomp_synth = tk.StringVar()
     selected_accomp_synth.set(default_accomp_synth)
     accomp_synth = default_accomp_synth
 
@@ -682,7 +689,7 @@ if __name__ == '__main__':
     # dark: dub, bass, jbass, varsaw, lazer
     # percussive: bell, gong, pluck, piano
     accomp_synth_options = ['ambi', 'klank', 'glass', 'space', 'soprano',  'nylon', 'pulse', 'scatter', 'charm', 'ripple', 'creep', 'bug', 'saw', 'pads',  'dub', 'bass', 'jbass', 'varsaw', 'lazer',  'sinepad', 'soft', 'blip', 'keys', 'zap',  'bell', 'gong', 'pluck', 'piano']
-    accomp_synth_dropdown = tkinter.OptionMenu(sidebar_music, selected_accomp_synth, *accomp_synth_options, command=set_accomp_synth)
+    accomp_synth_dropdown = tk.OptionMenu(sidebar_music, selected_accomp_synth, *accomp_synth_options, command=set_accomp_synth)
     accomp_synth_dropdown.grid(row=5, column=1, sticky='ew')
     accomp_synth_dropdown['menu'].insert_separator(5)
     accomp_synth_dropdown['menu'].insert_separator(15)
@@ -693,7 +700,7 @@ if __name__ == '__main__':
     def slide_melody_layers(var):
         global melody_layers
         melody_layers = melody_layers_slider.get()
-    melody_layers_slider = tkinter.Scale(sidebar_music, from_=0, to=8, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_melody_layers)
+    melody_layers_slider = tk.Scale(sidebar_music, from_=0, to=8, orient=tk.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_melody_layers)
     melody_layers_slider.set(default_melody_layers)
     melody_layers_slider.grid(row=6, column=1)
 
@@ -701,30 +708,30 @@ if __name__ == '__main__':
     def slide_accomp_layers(var):
         global accomp_layers
         accomp_layers = accomp_layers_slider.get()
-    accomp_layers_slider = tkinter.Scale(sidebar_music, from_=0, to=8, orient=tkinter.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_accomp_layers)
+    accomp_layers_slider = tk.Scale(sidebar_music, from_=0, to=8, orient=tk.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_accomp_layers)
     accomp_layers_slider.set(default_accomp_layers)
     accomp_layers_slider.grid(row=7, column=1)
 
 
-    toggles = tkinter.LabelFrame(playbar, borderwidth=0)
+    toggles = tk.LabelFrame(playbar, borderwidth=0)
     toggles.grid(column=0)
     # toggle video on/off
     def toggle_video():
         global show_video
         show_video = video_toggle_var.get() == 1
-    video_toggle_var = tkinter.IntVar(value=1)
-    video_toggle = tkinter.Checkbutton(toggles, text="Show Video", variable=video_toggle_var, command=toggle_video)
+    video_toggle_var = tk.IntVar(value=1)
+    video_toggle = tk.Checkbutton(toggles, text="Show Video", variable=video_toggle_var, command=toggle_video)
     video_toggle.grid(column=0, row=0, sticky='w')
 
     # toggle flow on/off
     def toggle_flow():
         global show_flow
         show_flow = flow_toggle_var.get() == 1
-    flow_toggle_var = tkinter.IntVar(value=1)
-    flow_toggle = tkinter.Checkbutton(toggles, text="Show Flow", variable=flow_toggle_var, command=toggle_flow)
+    flow_toggle_var = tk.IntVar(value=1)
+    flow_toggle = tk.Checkbutton(toggles, text="Show Flow", variable=flow_toggle_var, command=toggle_flow)
     flow_toggle.grid(column=1, row=0, sticky='w')
 
-    playstop = tkinter.LabelFrame(playbar, borderwidth=0)
+    playstop = tk.LabelFrame(playbar, borderwidth=0)
     playstop.grid()
     # play/pause button
     def switch():
@@ -735,12 +742,12 @@ if __name__ == '__main__':
             if selected_video != "" or webcam == True:
                 start_playback()
 
-    play_btn = tkinter.Button(playstop, text="Generate", command=switch, height=3, width=6, relief='raised')
+    play_btn = tk.Button(playstop, text="Generate", command=switch, height=3, width=6, relief='raised')
     play_btn.grid(column=0, row=0, pady=5)
 
 
     # stop button
-    stop_btn = tkinter.Button(playstop, text="Stop", command=stop_playback, height=3, width=6, relief='raised')
+    stop_btn = tk.Button(playstop, text="Stop", command=stop_playback, height=3, width=6, relief='raised')
     stop_btn.grid(column=1, row=0, pady=5)
 
 
