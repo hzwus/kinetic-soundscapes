@@ -1,4 +1,5 @@
 
+from re import S
 import numpy as np
 import math
 import statistics
@@ -210,13 +211,45 @@ def compute_path_dist(trajectory):
         dist += math.dist(trajectory[i], trajectory[i-1])
     return dist
 
+def attenuate_volume(img, point):
+    h, w = img.shape[:2]
+    pt_x = point[-1][0]
+    pt_y = point[-1][1]
+
+    # define a square around the pixel to loop over
+    s = 10
+    tl = int(max(pt_x - s, 0)), int(min(pt_y + s, h))
+    tr = int(min(pt_x + s, w)), int(min(pt_y + s, h))
+    bl = int(max(pt_x - s, 0)), int(max(pt_y - s, 0))
+    br = int(min(pt_x + s, w)), int(max(pt_y - s, 0))
+    lum_values = []
+    for x in range(bl[0], br[0]):
+        for y in range(bl[1], tl[1]):
+            if x > tr[0] or y > tr[1]:
+                continue
+            b, g, r = img[y][x]
+            lum = 0.2126*r + 0.7152*g + 0.0722*b
+            lum_values.append(lum)
+    # print("lum values", lum_values)
+    contrast = np.std(lum_values)
+    # print("contrast:", contrast)
+
+    attenuation = 1
+    if contrast < 100:
+        attenuation = 0.1*math.sqrt(contrast)
+        # print("attenuation:", attenuation)
+        # vol *= attenuation
+
+    return attenuation
+
 # compute volume based on speed of flow, calibrated according to type of synth, pitch, and flag (melody=0, accomp=1)
 def compute_volume(speed, pitch, synth, flag, layers):
-    vol = speed
+    print("speed is ", speed)
+    vol = 3*math.log(speed+1)
     if flag == 0:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
             vol *= 3
-            vol /= (pitch+30)
+            vol /= (pitch+20)
         elif synth in ("marimba", "gong", "keys", "scatter"):
             vol *= 1.2
         elif synth in ("bell", "sitar", "karp", "space", "pluck"):
@@ -229,17 +262,15 @@ def compute_volume(speed, pitch, synth, flag, layers):
     elif flag == 1:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
             vol *= 3
-            vol /= (pitch+30)
+            vol /= (pitch+20)
         elif synth in ("nylon", "pulse", "saw", "bug", "creep", "bell", "ripple"):
             vol *= 0.03
         elif synth == "glass":
             vol *= 0.3
-        elif synth in ("klank", "charm", "ambi"):
+        elif synth in ("klank", "charm", "ambi", "piano"):
             vol *= 0.2
         elif synth in ("gong", "keys"):
             vol *= 0.7
-        elif synth in ("piano"):
-            vol *= 0.5
         else:
             vol *= 0.05
 
@@ -266,7 +297,7 @@ def differentiate_pitches(pitches, prev_pitches):
             #     continue
             roll = random.uniform(0, 1)
             if roll > 0.25:
-                differentiated[i] += random.choice([1, -1])
+                differentiated[i] += random.choice([1, 1, -1, -1, 2, -2])
     # print("after diff:", differentiated)
     return differentiated
 
@@ -394,7 +425,7 @@ def generate_music(trajectories, img):
             weighted_stdev = (len(quadrant)/len(trajectories))*quadrant_stdev
             overall_stdev += weighted_stdev
     overall_stdev *= 10
-    print("overall std dev of directions is ", overall_stdev)
+    # print("overall std dev of directions is ", overall_stdev)
 
     avg_speed = 0
     for i in range(len(trajectories)):
@@ -410,11 +441,11 @@ def generate_music(trajectories, img):
     # print("tempo is ", fd.Clock.bpm)
 
 
-    melody_note_lengths = [0.25]
+    melody_note_lengths = [0.25, 0.25]
     if overall_stdev > 0.05:
         melody_note_lengths.append(0.5)
     if overall_stdev > 0.1:
-        melody_note_lengths.append(0.25)
+        melody_note_lengths.append(0.5)
     if overall_stdev > 0.25:
         melody_note_lengths.append(1)
     if overall_stdev > 0.5:
@@ -422,7 +453,7 @@ def generate_music(trajectories, img):
     if overall_stdev > 1:
         melody_note_lengths.extend([1, 0.75, 0.5, 0.5, 0.25, 0.25])
     if overall_stdev > 2:
-        melody_note_lengths.extend([1/3, 3/4, 1])
+        melody_note_lengths.extend([1/3, 1/3])
 
     accomp_note_lengths = [4]
     if overall_stdev > 0.05:
@@ -508,20 +539,26 @@ def generate_music(trajectories, img):
             #     if quantized:
             #         pitch = round(pitch)
             #     pitches.append(pitch)
-            pitch = (h - t[-1][1]) / h * 27 - 12
+            pitch = (h - t[-1][1]) / h * 27 - 6
             if quantized:
                 pitch = round(pitch)
             vol = compute_volume(speed, pitch, melody_synth, 0, melody_layers)
-            lpf = 1500*avg_speed + 300
+            # attenuate volume if very low contrast feature point
+            attenuation = attenuate_volume(img, t)
+            lpf = 1500*avg_speed*attenuation + 300
+
+            # extra dampening based on contrast
+            lpf  *= attenuation**2
             # print("lpf is ", lpf)
             melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan, lpf)
         else:
             pitch = (h - t[-1][1]) / h * 21 - 12
             if quantized:
                 pitch = round(pitch)
-            vol = compute_volume(speed, pitch, accomp_synth, 1, accomp_layers)
+            vol = compute_volume(speed, pitch, accomp_synth, 1, accomp_layers)        
+            attenuation = attenuate_volume(img, t)
             lpf = 1500*avg_speed + 300
-      
+            lpf  *= attenuation**2
             dur = random.choice(accomp_note_lengths)
             accomp_attrs[i] = (pitch, vol, dur, pan, lpf)
     
