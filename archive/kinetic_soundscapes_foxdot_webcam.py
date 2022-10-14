@@ -8,7 +8,7 @@ import os
 
 print(SynthDefs)
 
-def generate_sound(flow_window, step=240):
+def generate_sound(flow_window, step=16):
     Clock.bpm = 108
     h, w = img.shape[:2]
     y, x = numpy.mgrid[step/2:h:step, step/2:w:step].reshape(2,-1).astype(int)
@@ -129,7 +129,7 @@ def generate_sound(flow_window, step=240):
     # print("AVG ANG IS ", avg_ang)
     
 
-def draw_flow(img, flow, step=240):
+def draw_flow(img, flow, step=16):
 
     h, w = img.shape[:2]
     y, x = numpy.mgrid[step/2:h:step, step/2:w:step].reshape(2,-1).astype(int)

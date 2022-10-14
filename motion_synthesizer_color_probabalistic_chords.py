@@ -8,6 +8,7 @@ from os import getcwd
 from os.path import normpath, basename
 from functools import cmp_to_key
 from util import quantize, image_resize
+import colorsys
 
 
 import cv2
@@ -49,13 +50,34 @@ default_accomp_synth = 'sinepad'
 default_cci = 120
 default_bpm = 120
 quantized = True
-chords = [
-            [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
-            [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
-            [-11, -9, -7, -4,-2,0, 3, 5, 7]
-            ]
-chord = chords[0]
+
+# histogram for binning detected color values
+color_hist = np.zeros(12)
+# based on Scriabin's color to tone mapping
+# chords = [
+#     [-14,-12,-10,-7,-5,-3,0,2,4,7,9,11], # C
+#     [-10,-8,-6,-3,-1,1,4,6,8,11,13,15],  # G
+#     [-13,-11,-9,-6,-4,-2,1,3,5,8,10,12],  # D
+#     [-16,-14,-12,-9,-7,-5,-2,0,2,5,7,9,12,14,16], # A
+#     [-12,-10,-8,-5,-3,-1,2,4,6,9,11,13],  # E
+#     [-15,-13,-11,-8,-6,-4,-1,1,3,6,8,10],  # B
+#     [-11.5,-10,-7.5,-4.5,-3,-1.5,3.5,5,7.5,10.5,12,14.5], # F#
+#     [-13.5,-12,-9.5,-6.5,-5,-2.5,0.5,2,4.5,7.5,9,11.5,14.5,16,18.5], # C#
+#     [-10.5,-8,-6.5,-3.5,-1,0.5,4.5,7,8.5,11.5,14,15.5], # A♭
+#     [-13.5,-11,-9.5,-6.5,-4,-2.5,1.5,4,5.5,8.5,11,12.5], # E♭
+#     [-15.5,-13,-11,-8.5,-6,-4,-1.5,1,3,5.5,8,10,12.5,15,17], # B♭
+#     [-11,-9,-7,-4,-2,0,3,5,7,10,12,14] # F
+# ]
+
+# chords = [
+#             [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
+#             [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
+#             [-11, -9, -7, -4,-2,0, 3, 5, 7]
+#             ]
+chord = [-14,-12,-10,-7,-5,-3,0,2,4,7,9,11,14,16,18]
 chord_change_interval = default_cci
+
+roots = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'Ab', 'Eb', 'Bb', 'F']
 
 #playback
 playing = False
@@ -67,6 +89,7 @@ frame_idx = 0
 webcam = False
 vid_frame = 0
 chord_idx = 0
+last_picked_color = 0
 VIDEO_W = 1000
 VIDEO_H = 700
 
@@ -192,7 +215,7 @@ def compute_volume(speed, pitch, synth, flag):
             vol *= 0.03
         elif synth == "glass":
             vol *= 0.3
-        elif synth in ("klank", "charm"):
+        elif synth in ("klank", "charm", "ambi"):
             vol *= 0.2
         elif synth in ("gong", "keys"):
             vol *= 0.7
@@ -208,8 +231,47 @@ def compute_volume(speed, pitch, synth, flag):
     # print(vol)
     return vol
 
+# given a set of pitches, adjust them so that they sound more harmonious (make them all even or odd)
+def refine_pitches(pitches):
+    refined_pitches = pitches
+    x = random.choice(['even', 'odd'])
+    if x == 'even':
+        for i in range(len(refined_pitches)):
+            pitch = refined_pitches[i]
+            if pitch is None:
+                continue
+            if pitch % 2 != 0:
+                refined_pitches[i] += random.choice([1, -1])
+    elif x == 'odd':
+        for i in range(len(refined_pitches)):
+            pitch = refined_pitches[i]
+            if pitch is None:
+                continue
+            if pitch % 2 == 0:
+                refined_pitches[i] += random.choice([1, -1])
+    return refined_pitches
+
+# probabilistically choose the next chord based on the circle of fifths
+def choose_next_chord(chord_idx):
+    print("current chord_idx is ", chord_idx)
+    probabilities = [0] * 12
+    for i in range(12):
+        if i != chord_idx:
+            distance = abs(chord_idx - i) % 12
+            prob = 12 / distance
+            probabilities[i] = prob
+
+    print("probabilities", probabilities)
+
+    choices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    next_chord = random.choices(choices, weights=probabilities, k=1)
+    print("next chord is ", next_chord[0])
+    return next_chord[0]
+        
+
+
 def generate_music(trajectories, img):
-    global melody_layers, accomp_layers, melody_synth, accomp_synth
+    global melody_layers, accomp_layers, melody_synth, accomp_synth, vid_frame, color_hist, chord_idx, last_picked_color
 
     players_accomp = all_accomp[:accomp_layers]
     players_melody = all_melody[:melody_layers]
@@ -281,7 +343,7 @@ def generate_music(trajectories, img):
             weighted_stdev = (len(quadrant)/len(trajectories))*quadrant_stdev
             overall_stdev += weighted_stdev
 
-    # print("overall std dev of directions is ", 10*overall_stdev)
+    print("overall std dev of directions is ", 10*overall_stdev)
 
     avg_speed = 0
     for i in range(len(trajectories)):
@@ -291,19 +353,19 @@ def generate_music(trajectories, img):
         avg_speed += speed
     if len(trajectories) > 0:
         avg_speed /= len(trajectories)
-    print("avg speed of trajectories is ", avg_speed)
+    # print("avg speed of trajectories is ", avg_speed)
 
-    melody_note_lengths = [0.25, 0.25]
+    melody_note_lengths = [0.5]
     if overall_stdev > 0.05:
-        melody_note_lengths.append(0.5)
+        melody_note_lengths.append(0.25)
     if overall_stdev > 0.1:
-        melody_note_lengths.append(0.5)
+        melody_note_lengths.append(0.25)
     if overall_stdev > 0.25:
         melody_note_lengths.append(1)
     if overall_stdev > 0.5:
         melody_note_lengths.append(0.75)
     if overall_stdev > 1:
-        melody_note_lengths.extend([1, 0.75, 0.5, 0.25, 0.25])
+        melody_note_lengths.extend([1, 0.75, 0.5, 0.5, 0.25, 0.25])
     if overall_stdev > 2:
         melody_note_lengths.extend([1/3, 3/4, 1])
 
@@ -323,16 +385,58 @@ def generate_music(trajectories, img):
 
     for i in range(len(trajectories_best)):
         t = trajectories_best[i]
+        loc_x = int(t[-1][0])
+        loc_y = int(t[-1][1])
+
+        if loc_x >= w: 
+            loc_x = w-1
+        elif loc_x < 0:
+            loc_x = 0
+        if loc_y >= h:
+            loc_y = h-1
+        elif loc_y < 0:
+            loc_y = 0
+        # bgr_color = img[loc_y, loc_x]
+        # print("bgr: ", bgr_color)
+        b, g, r = img[loc_y, loc_x] / 255
+        color = colorsys.rgb_to_hsv(r, g, b)
+        hue = color[0]
+        saturation = color[1]
+        value = color[2]
+        # print("hsv:", color)
+        # print("hue: ", hue)
+        if saturation < 0.1 or value < 0.1:
+            # print("not enough color")
+            continue
+        else:
+            # print("hue is ", hue)
+            color_hist[math.floor(hue * 12)] += 1
+
+    # detect color in 7 frame intervals
+    if vid_frame % 7 == 0 and np.sum(color_hist) > 10:
+       
+        # compute the most prominent color to assign a chord
+       
+        # print(color_hist)
+        picked_color = np.argmax(color_hist)
+        # print("color picked is ", picked_color)
+        if picked_color != last_picked_color:
+            chord_idx = choose_next_chord(chord_idx)
+        # if chord_idx == len(roots):
+        #     chord_idx = 0
+        last_picked_color = picked_color
+        fd.Root.default.set(roots[chord_idx])
+        print(fd.Root.default.char)
+        # print("chord chosen is ", chords[chord_idx])
+        # chord = chords[chord_idx]
+        color_hist = np.zeros(12)
+    vid_frame += 1
+
+    for i in range(len(trajectories_best)):
+        t = trajectories_best[i]
         dist = compute_path_dist(t)
         speed = dist / (len(t))
         pan = (t[-1][0] / w) * 1.8 - 0.9
-
-        # loc_x = int(t[-1][0])
-        # loc_y = int(t[-1][1])
-        # b, g, r = img[loc_y, loc_x]
-        # lum = (0.2126*r + 0.7152*g + 0.0722*b) / 255
-        # print(loc_x, loc_y, color)
-        # print("luminance is ", lum)
 
         if i > len(players_accomp)-1:
             dur = random.choice(melody_note_lengths)
@@ -347,7 +451,7 @@ def generate_music(trajectories, img):
                 pitch = round(pitch)
             vol = compute_volume(speed, pitch, melody_synth, 0)
             lpf = 1500*avg_speed + 300
-            print("lpf is ", lpf)
+            # print("lpf is ", lpf)
             melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan, lpf)
         else:
             pitch = (h - t[-1][1]) / h * 21 - 12
@@ -359,14 +463,20 @@ def generate_music(trajectories, img):
             dur = random.choice(accomp_note_lengths)
             accomp_attrs[i] = (pitch, vol, dur, pan, lpf)
     
-    # print(player_attrs)
 
-    # rand_melody_idx = random.randint(0, len(melody_attrs)-1)   
+    melody_pitches = []
+    for i in range(len(melody_attrs)):
+        if melody_attrs[i] is None:
+            melody_pitches.append(None)
+        else:
+            melody_pitches.append(melody_attrs[i][0])
+    melody_pitches = refine_pitches(melody_pitches)
+    # print(melody_pitches)
 
     for i in range(len(melody_attrs)):
         if melody_attrs[i] is None:
-            break
-        pitches = melody_attrs[i][0]
+            continue
+        pitch = melody_attrs[i][0]
         # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
         # print(pitch)
         # pitch = quantize(pitch, chord)
@@ -379,7 +489,7 @@ def generate_music(trajectories, img):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_melody[i] >> synth_dict[melody_synth](pitches, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0, lpf=lpf)
+        players_melody[i] >> synth_dict[melody_synth](pitch, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0, lpf=lpf)
         # print("playing: ", pitches)
     
     for i in range(len(accomp_attrs)):
@@ -400,7 +510,7 @@ def generate_music(trajectories, img):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=6, delay=0, lpf=lpf)
+        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=5, delay=0, lpf=lpf)
 
     return trajectories_best_indices
 
@@ -420,13 +530,13 @@ def show_frame():
             cap = cv2.VideoCapture(selected_video)
         cap_exists = True
 
-    vid_frame += 1
-    if vid_frame % chord_change_interval == 0:
-        chord_idx += 1
-        if chord_idx == len(chords):
-            chord_idx = 0
-        chord = chords[chord_idx]
-        print("CHORD IS ", chord_idx)
+    # vid_frame += 1
+    # if vid_frame % chord_change_interval == 0:
+    #     chord_idx += 1
+    #     if chord_idx == len(chords):
+    #         chord_idx = 0
+    #     chord = chords[chord_idx]
+    #     print("CHORD IS ", chord_idx)
     # print(playing)
     if playing == False:   
         return                                    #creating a function
