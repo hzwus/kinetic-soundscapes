@@ -45,14 +45,14 @@ all_melody = [fd.m1, fd.m2, fd.m3, fd.m4, fd.m5, fd.m6, fd.m7, fd.m8]
 default_melody_layers = 2
 default_accomp_layers = 4
 
-default_melody_synth = 'piano'
-default_accomp_synth = 'piano'
+default_melody_synth = 'nylon'
+default_accomp_synth = 'nylon'
 
 # default_cci = 120
 default_bpm = 120
 quantized = True
 
-default_harmony_sus = 5
+default_harmony_sus = 4
 
 # histogram for binning detected color values
 color_hist = np.zeros(4)
@@ -77,32 +77,80 @@ color_hist = np.zeros(4)
 #             [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
 #             [-11, -9, -7, -4,-2,0, 3, 5, 7]
 #             ]
-base_chord = [-14,-12,-10,-7,-5,-3,0,2,4,7,9,11,14,16,18]
+
+# extend the notes of the chord to multiple octaves
+def extend_chord(chord):
+    extended = []
+    extended.extend([note - 14 for note in chord])
+    extended.extend([note - 7 for note in chord])
+    extended.extend(chord)
+    extended.extend([note + 7 for note in chord])
+    extended.extend([note + 14 for note in chord])
+    return extended
+    
+
+I = extend_chord([0, 2, 4])
+II = extend_chord([1, 3, 5])
+III = extend_chord([2, 4, 6])
+IV = extend_chord([0, 3, 5])
+V = extend_chord([-1, 1, 4])
+VI = extend_chord([0, 2, 5])
+VII = extend_chord([-1, 1, 3])
+
+I6 = extend_chord([0, 2, 4, 5])
+II6 = extend_chord([1, 3, 5, 6])
+III6 = extend_chord([2, 4, 6, 7])
+IV6 = extend_chord([0, 1, 3, 5])
+V6 = extend_chord([-1, 1, 2, 4])
+VI6 = extend_chord([0, 2, 3, 5])
+VII6 = extend_chord([-1, 1, 3, 4])
+
+I7 = extend_chord([0, 2, 4, 6])
+II7 = extend_chord([1, 3, 5, 7])
+III7 = extend_chord([2, 4, 6, 8])
+IV7 = extend_chord([0, 2, 3, 5])
+V7 = extend_chord([-1, 1, 3, 4])
+VI7 = extend_chord([0, 2, 4, 5])
+VII7 = extend_chord([-1, 1, 3, 5])
+
+# i = extend_chord([0, 1.5, 4])
+# II = extend_chord([1, 3.5, 5])
+# III = extend_chord([2, 4.5, 6])
+# iv = extend_chord([0, 3, 4.5])
+# v = extend_chord([-1.5, 1, 4])
+# VI = extend_chord([0.5, 2, 5])
+
+
 # chord_change_interval = default_cci
 prev_melody_pitches = []
 
+# "cinematic I VI III IV": [0, 8, 4, 5], # I VI III IV
+
+# https://mixedinkey.com/captain-plugins/wiki/best-chord-progressions/
 chords = {
-    "none": [0, 0, 0, 0],
-    "cinematic I VI III IV": [0, 8, 4, 5], # I VI III IV
-    "basic I IV V I": [0, 5, 7, 0] # I IV V I
+    "none": [I, I, I, I],
+    "basic I IV VI V": [I, IV, VI, V], # I IV V I
+    "QKThr": [I6, I7, V6, V7]
 }
-default_chord_setting = "cinematic I VI III IV"
+
+default_chord_setting = "none"
 chord = default_chord_setting
 chord_setting = default_chord_setting
+chord_quantization = chords[default_chord_setting][0]
 
-# cinematic
-roots = [0, 8, 4, 5]  # I VI III IV
+# # cinematic
+# roots = [0, 8, 4, 5]  # I VI III IV
 # # basic
 # roots = ['C', 'G', 'F', 'D']
 
 # foxdot roots = [C - 0, C# - 1, D - 2, D# - 3 E - 4, F - 5, F# - 6, G - 7, Ab - 8, A - 9, Bb - 10, B - 11]
-base_roots = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'Ab', 'Eb', 'Bb', 'F']
-base_root = 'C'
+# base_roots = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'Ab', 'Eb', 'Bb', 'F']
+# base_root = 'C'
 
 #playback
 playing = False
 show_video = True
-show_flow = True
+show_flow = False
 selected_video = None
 cap_exists = False
 frame_idx = 0
@@ -244,7 +292,7 @@ def attenuate_volume(img, point):
 
 # compute volume based on speed of flow, calibrated according to type of synth, pitch, and flag (melody=0, accomp=1)
 def compute_volume(speed, pitch, synth, flag, layers):
-    print("speed is ", speed)
+    # print("speed is ", speed)
     vol = 3*math.log(speed+1)
     if flag == 0:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
@@ -353,7 +401,7 @@ def add_dissonance(chord, dissonance):
     return modified_chord
 
 def generate_music(trajectories, img):
-    global melody_layers, accomp_layers, melody_synth, accomp_synth, vid_frame, color_hist, chord, prev_melody_pitches, harmony_sus, chord_setting
+    global melody_layers, accomp_layers, melody_synth, accomp_synth, vid_frame, color_hist, chord, prev_melody_pitches, harmony_sus, chord_setting, chord_quantization
 
     players_accomp = all_accomp[:accomp_layers]
     players_melody = all_melody[:melody_layers]
@@ -513,8 +561,7 @@ def generate_music(trajectories, img):
         # print("color variation level:", color_variation)
         picked_color = np.argmax(color_hist)
         # print("color picked is ", picked_color)
-
-        fd.Root.default.set((base_roots.index(base_root) + chords[chord_setting][picked_color]) % 12)
+        chord_quantization = chords[chord_setting][picked_color]
         # print("chord chosen is ", chords[chord_idx])
         # chord = chords[chord_idx]
 
@@ -524,6 +571,8 @@ def generate_music(trajectories, img):
 
         color_hist = np.zeros(4)
     vid_frame += 1
+    print("quantization is ", chord_quantization[6:9])
+
 
     for i in range(len(trajectories_best)):
         t = trajectories_best[i]
@@ -600,7 +649,7 @@ def generate_music(trajectories, img):
         # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
         # print(pitch)
         if quantized:
-            pitch = quantize(pitch, base_chord)
+            pitch = quantize(pitch, chord_quantization)
         # pitch = (pitch, pitch+2, pitch+4)
     
         vol = accomp_attrs[i][1]
@@ -713,7 +762,7 @@ if __name__ == '__main__':
         show_frame()
 
     def stop_playback():
-        global cap, cap_exists, selected_video, trajectories, webcam
+        global cap, cap_exists, selected_video, trajectories, webcam, chord_quantization, chord_setting, default_chord_setting
         play_btn.config(text="Generate")
 
         if webcam:
@@ -733,6 +782,7 @@ if __name__ == '__main__':
         result.configure(image=imgtk)
         trajectories = []
         cap_exists = False
+        chord_quantization = chords[default_chord_setting][0]
         
     root=tk.Tk()                                     
     root.title("Kinetic Soundscapes")            #you can give any title
@@ -849,7 +899,7 @@ if __name__ == '__main__':
     root_label = tk.Label(sidebar_music, text="Root").grid(row=0, column=0, sticky='ws')
     chords_label = tk.Label(sidebar_music, text="Chords").grid(row=1, column=0, sticky='ws')
     scale_label = tk.Label(sidebar_music, text="Scale").grid(row=2, column=0, sticky='ws')
-    tempo_label = tk.Label(sidebar_music, text="Tempo").grid(row=3, column=0, sticky='ws')
+    # tempo_label = tk.Label(sidebar_music, text="Tempo").grid(row=3, column=0, sticky='ws')
     # cci_label = tk.Label(sidebar_music, text="Chord Change Interval").grid(row=3, column=0, sticky='ws')
     melody_synth_label = tk.Label(sidebar_music, text="Melody Synth").grid(row=4, column=0, sticky='ws')
     accomp_synth_label = tk.Label(sidebar_music, text="Harmony Synth").grid(row=5, column=0, sticky='ws')
@@ -861,8 +911,8 @@ if __name__ == '__main__':
     # dropdown for root
     def set_root(var):
         global base_root
-        # fd.Root.default.set(selected_root.get())
-        base_root = selected_root.get()
+        fd.Root.default.set(selected_root.get())
+        # base_root = selected_root.get()
         # print("setting root to ", fd.Root.default.char)
     selected_root = tk.StringVar()
     selected_root.set('C')
@@ -875,7 +925,7 @@ if __name__ == '__main__':
         chord_setting = selected_chords.get()
     selected_chords = tk.StringVar()
     selected_chords.set(default_chord_setting)
-    chords_dropdown = tk.OptionMenu(sidebar_music, selected_chords, "none", "cinematic I VI III IV", "basic I IV V I", command=set_chords)
+    chords_dropdown = tk.OptionMenu(sidebar_music, selected_chords, "none", "basic I IV VI V", 'QKThr', command=set_chords)
     chords_dropdown.grid(row=1, column=1, sticky='ew')
 
 
@@ -894,12 +944,12 @@ if __name__ == '__main__':
     scale_dropdown['menu'].insert_separator(3)
     scale_dropdown.grid(row=2, column=1, sticky='ew')
 
-    # slider for tempo
-    def slide_bpm(var):
-        fd.Clock.update_tempo_now(bpm_slider.get())
-    bpm_slider = tk.Scale(sidebar_music, from_=20, to=220, orient=tk.HORIZONTAL, resolution = 4, length = 150, sliderlength=20, command=slide_bpm)
-    bpm_slider.set(120)
-    bpm_slider.grid(row=3, column=1)
+    # # slider for tempo
+    # def slide_bpm(var):
+    #     fd.Clock.update_tempo_now(bpm_slider.get())
+    # bpm_slider = tk.Scale(sidebar_music, from_=20, to=220, orient=tk.HORIZONTAL, resolution = 4, length = 150, sliderlength=20, command=slide_bpm)
+    # bpm_slider.set(120)
+    # bpm_slider.grid(row=3, column=1)
 
     # # slider for chord change interval
     # def slide_cci(var):
@@ -990,7 +1040,7 @@ if __name__ == '__main__':
     def toggle_flow():
         global show_flow
         show_flow = flow_toggle_var.get() == 1
-    flow_toggle_var = tk.IntVar(value=1)
+    flow_toggle_var = tk.IntVar(value=0)
     flow_toggle = tk.Checkbutton(toggles, text="Show Flow", variable=flow_toggle_var, command=toggle_flow)
     flow_toggle.grid(column=1, row=0, sticky='w')
 
