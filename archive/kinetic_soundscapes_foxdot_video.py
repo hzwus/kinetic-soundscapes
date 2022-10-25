@@ -76,7 +76,7 @@ def generate_sound(flow, step=240):
     p4 >> klank(bass2, dur=1/4, amp=min(vol2, max_vol))
     
 
-def draw_flow(img, flow, step=240):
+def draw_flow(img, flow, step=16):
 
     h, w = img.shape[:2]
     y, x = numpy.mgrid[step/2:h:step, step/2:w:step].reshape(2,-1).astype(int)
@@ -110,15 +110,15 @@ def draw_hsv(flow):
 
     return bgr
 
-
-cap = cv2.VideoCapture("media/waves1.mp4")
+cap = cv2.VideoCapture(0)
+# cap = cv2.VideoCapture("../media/waves1.mp4")
 
 suc, prev = cap.read()
 prevgray = cv2.cvtColor(prev, cv2.COLOR_BGR2GRAY)
 
 
 while True:
-    motion_window = 10
+    motion_window = 1
     for i in range(motion_window):
 
         suc, img = cap.read()
@@ -129,8 +129,8 @@ while True:
         start = time.time()
 
 
-        # flow = cv2.calcOpticalFlowFarneback(prevgray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-        flow = cv2.calcOpticalFlowFarneback(prevgray, gray, None, 0.1, 2, 10, 2, 1, 1, 0)
+        flow = cv2.calcOpticalFlowFarneback(prevgray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        # flow = cv2.calcOpticalFlowFarneback(prevgray, gray, None, 0.1, 2, 10, 2, 1, 1, 0)
 
         prevgray = gray
 
@@ -140,7 +140,7 @@ while True:
         # calculate the FPS for current frame detection
         fps = 1 / (end-start)
 
-        # print(f"{fps:.2f} FPS")
+        print(f"{fps:.2f} FPS")
 
     cv2.imshow('flow', draw_flow(gray, flow))
     cv2.imshow('flow HSV', draw_hsv(flow))
@@ -150,7 +150,7 @@ while True:
    
 
 
-    key = cv2.waitKey(5)
+    key = cv2.waitKey(10)
     if key == ord('q'):
         break
 

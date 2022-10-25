@@ -21,7 +21,7 @@ from util import quantize
 random.seed(time.time())
 players = [a1, a2, a3, a4, a5, a6, a7, a8]
 # players.extend([b1, b2, b3, b4])
-synths = [marimba, ambi, sinepad]
+synths = [nylon]
 # synths = [klank, feel, ambi]
 
 chords = [
@@ -53,7 +53,7 @@ frame_idx = 0
 
 
 # cap = cv2.VideoCapture(0)
-cap = cv2.VideoCapture("media/fireworks.mp4")
+cap = cv2.VideoCapture("../media/experiments/pendulum.mp4")
 
 
 # synth = server.add_synth()

@@ -19,8 +19,8 @@ trajectories = []
 frame_idx = 0
 
 
-# cap = cv2.VideoCapture(0)
-cap = cv2.VideoCapture("media/fireworks.mp4")
+cap = cv2.VideoCapture(0)
+# cap = cv2.VideoCapture("media/fireworks.mp4")
 
 
 

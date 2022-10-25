@@ -2,7 +2,7 @@
 from re import S
 import numpy as np
 import math
-import statistics
+import scipy.stats
 import time
 import random
 from os import getcwd
@@ -42,7 +42,7 @@ trajectories = []
 all_accomp = [fd.a1, fd.a2, fd.a3, fd.a4, fd.a5, fd.a6, fd.a7, fd.a8]
 all_melody = [fd.m1, fd.m2, fd.m3, fd.m4, fd.m5, fd.m6, fd.m7, fd.m8]
 
-default_melody_layers = 2
+default_melody_layers = 3
 default_accomp_layers = 4
 
 default_melody_synth = 'nylon'
@@ -133,7 +133,7 @@ chords = {
     "QKThr": [I6, I7, V6, V7]
 }
 
-default_chord_setting = "none"
+default_chord_setting = "QKThr"
 chord = default_chord_setting
 chord_setting = default_chord_setting
 chord_quantization = chords[default_chord_setting][0]
@@ -164,6 +164,24 @@ VIDEO_H = 700
 global last_frame                                      #creating global variable
 # last_frame = np.zeros((480, 720, 3), dtype=np.uint8)
 
+
+# METRICS
+metrics = {
+    "velocity": 0,
+    "velocity variation": [],
+    "directional variation": 0,
+    "hue variation": []
+}
+
+def reset_metrics():
+    global metrics
+    metrics = {
+        "velocity": 0,
+        "velocity variation": [],
+        "directional variation": 0,
+        "hue variation": []
+    }
+
 def convert_for_tk(frame):
     frame = image_resize(frame, width=VIDEO_W)
     pic = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #we can change the display color of the frame gray,black&white here
@@ -181,6 +199,7 @@ def compute_flow(img):
                     blockSize = 7 )
 
     # Calculate optical flow for a sparse feature set using the iterative Lucas-Kanade Method
+
     if len(trajectories) > 0:
         img0, img1 = prev_gray, frame_gray
         pts0 = np.float32([trajectory[-1] for trajectory in trajectories]).reshape(-1, 1, 2)
@@ -247,9 +266,10 @@ def compute_flow(img):
         # Detect the good features to track
         p = cv2.goodFeaturesToTrack(frame_gray, mask = mask, **feature_params)
         if p is not None:
-            # If good features can be tracked - add that to the trajectories
+            # If good features can be tracked - begin a new trajectory and add it to the trajectories list
             for x, y in np.float32(p).reshape(-1, 2):
-                trajectories.append([(x, y)])
+                # if len(trajectories) < 100:
+                    trajectories.append([(x, y)])
 
     return img
 
@@ -296,11 +316,11 @@ def compute_volume(speed, pitch, synth, flag, layers):
     vol = 3*math.log(speed+1)
     if flag == 0:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
-            vol *= 3
+            vol *= 2
             vol /= (pitch+20)
         elif synth in ("marimba", "gong", "keys", "scatter"):
             vol *= 1.2
-        elif synth in ("bell", "sitar", "karp", "space", "pluck"):
+        elif synth in ("bell", "sitar", "karp", "space", "pluck", "donk"):
             vol *= 0.1
         elif synth in ("nylon"):
             vol *= 0.05
@@ -309,18 +329,16 @@ def compute_volume(speed, pitch, synth, flag, layers):
 
     elif flag == 1:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
-            vol *= 3
+            vol *= 2
             vol /= (pitch+20)
         elif synth in ("nylon", "pulse", "saw", "bug", "creep", "bell", "ripple"):
-            vol *= 0.03
-        elif synth == "glass":
-            vol *= 0.3
-        elif synth in ("klank", "charm", "ambi", "piano"):
+            vol *= 0.05
+        elif synth in ("klank", "charm", "piano"):
             vol *= 0.2
-        elif synth in ("gong", "keys"):
+        elif synth in ("gong", "keys", "glass"):
             vol *= 0.7
         else:
-            vol *= 0.05
+            vol *= 0.1
 
     # account for faster motion from webcam input
     if webcam == True:
@@ -333,7 +351,7 @@ def compute_volume(speed, pitch, synth, flag, layers):
     return vol
 
 # reduce the instance of the same notes repeating
-def differentiate_pitches(pitches, prev_pitches):
+def differentiate_pitches(pitches, prev_pitches, offset):
     # print("prev pitches:", prev_pitches)
     # print("current pitches:", pitches)
     differentiated = pitches
@@ -341,11 +359,14 @@ def differentiate_pitches(pitches, prev_pitches):
         if pitches[i] is None or prev_pitches[i] is None:
             continue
         if pitches[i] == prev_pitches[i]:
-            # if pitches[i] % 12 in (0, 2, 4, 6):
-            #     continue
-            roll = random.uniform(0, 1)
-            if roll > 0.25:
-                differentiated[i] += random.choice([1, 1, -1, -1, 2, -2])
+            if pitches[i] % 12 in (0, 2, 4, 6):
+                if random.uniform(0, 1) > 0.5:
+                    continue
+            if random.uniform(0, 1) > 0.5:
+                differentiated[i] += (offset[i] * random.choice([1, 1, 2]))
+            else:
+                differentiated[i] -= random.choice([-1, -1, -2])
+    
     # print("after diff:", differentiated)
     return differentiated
 
@@ -441,7 +462,8 @@ def generate_music(trajectories, img):
     #                   if a quadrant doesn't have enough data points, ignore it
     quadrants = [ [], [], [], [] ]
     mag_total = 0
-    for t in trajectories_best:
+    dirs = []
+    for t in trajectories:
         final_x, final_y = t[-1][0], t[-1][1]
         initial_x, initial_y = t[-2][0], t[-2][1]
 
@@ -450,9 +472,10 @@ def generate_music(trajectories, img):
         mag = math.dist(t[0], t[-1])
         mag_total += mag
 
-        # direction of flow weighted by magnitude
-        dir = (np.arctan2(fy, fx) + np.pi) * mag
-
+        # direction of flow 
+        dir = (np.arctan2(fy, fx) + np.pi)
+        # dir *= mag
+        dirs.append(dir)
         if final_x < w/2:
             if final_y < h/2: # SW quadrant
                 quadrants[0].append(dir)
@@ -464,16 +487,24 @@ def generate_music(trajectories, img):
             else: # NE quadrant
                 quadrants[3].append(dir)
      
+    # print("quadrants", quadrants)
 
     overall_stdev = 0
     for quadrant in quadrants:
         if len(quadrant) >= 2 and mag_total > 0:
-            quadrant = [val / mag_total for val in quadrant]     # normalize weight based on total magnitude
-            quadrant_stdev = statistics.stdev(quadrant)
+            quadrant = [val for val in quadrant]
+            quadrant_stdev = scipy.stats.circstd(quadrant)
             weighted_stdev = (len(quadrant)/len(trajectories))*quadrant_stdev
             overall_stdev += weighted_stdev
-    overall_stdev *= 10
+    # # overall_stdev *= 10
+
+    # overall_stdev = 0
+    # if len(dirs) > 0:
+    #     overall_stdev = scipy.stats.circstd(dirs)
+
+
     # print("overall std dev of directions is ", overall_stdev)
+    metrics['directional variation'] += overall_stdev
 
     avg_speed = 0
     for i in range(len(trajectories)):
@@ -484,37 +515,41 @@ def generate_music(trajectories, img):
     if len(trajectories) > 0:
         avg_speed /= len(trajectories)
     # print("avg speed of trajectories is ", avg_speed)
-    tempo = 110*math.log(0.3*avg_speed+1.5) - 20
+    metrics['velocity'] += avg_speed
+    metrics['velocity variation'].append(avg_speed)
+
+
+    tempo = 130*math.log(0.3*avg_speed+1.5)
+
+    tempo = min(220, tempo)
+    if avg_speed > 4 and overall_stdev < 0.1:
+        tempo = min(80, tempo)
     fd.Clock.update_tempo_now(round(tempo/10)*10)
     # print("tempo is ", fd.Clock.bpm)
 
 
-    melody_note_lengths = [0.25, 0.25]
-    if overall_stdev > 0.05:
+    melody_note_lengths = [0.25, 0.25, 0.25]
+    if overall_stdev > 0.01:
         melody_note_lengths.append(0.5)
     if overall_stdev > 0.1:
         melody_note_lengths.append(0.5)
-    if overall_stdev > 0.25:
-        melody_note_lengths.append(1)
-    if overall_stdev > 0.5:
-        melody_note_lengths.append(0.75)
     if overall_stdev > 1:
-        melody_note_lengths.extend([1, 0.75, 0.5, 0.5, 0.25, 0.25])
+        melody_note_lengths.append(1)
     if overall_stdev > 2:
-        melody_note_lengths.extend([1/3, 1/3])
+        melody_note_lengths.extend([0.5, 0.75])
+    if overall_stdev > 5:
+        melody_note_lengths.extend([0.75, 1/3, 1])
 
-    accomp_note_lengths = [4]
-    if overall_stdev > 0.05:
+    accomp_note_lengths = [4, 4, 4]
+    if overall_stdev > 0.01:
         accomp_note_lengths.append(2)
     if overall_stdev > 0.1:
         accomp_note_lengths.append(1)
-    if overall_stdev > 0.25:
-        accomp_note_lengths.append(0.5)
-    if overall_stdev > 0.5:
-        accomp_note_lengths.append(0.5)
     if overall_stdev > 1:
-        accomp_note_lengths.extend([0.5, 1, 2])
+        accomp_note_lengths.extend([0.5, 2])
     if overall_stdev > 2:
+        accomp_note_lengths.extend([0.5, 1, 2])
+    if overall_stdev > 5:
         accomp_note_lengths.extend([0.25, 2, 3])
 
     for i in range(len(trajectories)):
@@ -560,6 +595,7 @@ def generate_music(trajectories, img):
         color_variation = np.std(color_hist_indices)
         # print("color variation level:", color_variation)
         picked_color = np.argmax(color_hist)
+        metrics['hue variation'].append(picked_color)
         # print("color picked is ", picked_color)
         chord_quantization = chords[chord_setting][picked_color]
         # print("chord chosen is ", chords[chord_idx])
@@ -571,14 +607,26 @@ def generate_music(trajectories, img):
 
         color_hist = np.zeros(4)
     vid_frame += 1
-    print("quantization is ", chord_quantization[6:9])
+    # print("quantization is ", chord_quantization[6:9])
 
-
+    offset = [0] * len(trajectories_best) # the offset for each pitch based on direction
     for i in range(len(trajectories_best)):
         t = trajectories_best[i]
         dist = compute_path_dist(t)
         speed = dist / (len(t))
         pan = (t[-1][0] / w) * 1.8 - 0.9
+
+        final_x, final_y = t[-1][0], t[-1][1]
+        initial_x, initial_y = t[-2][0], t[-2][1]
+
+        fx = final_x - initial_x
+        fy = final_y - initial_y
+        # direction of flow 
+        dir = (np.arctan2(fy, fx) + np.pi)
+        if dir > np.pi/4 and dir < 3*np.pi/4:
+            offset[i] = 1
+        elif dir > 5*np.pi/4 and dir < 7*np.pi/4:
+            offset[i] = -1
 
         if i > len(players_accomp)-1:
             dur = random.choice(melody_note_lengths)
@@ -588,10 +636,12 @@ def generate_music(trajectories, img):
             #     if quantized:
             #         pitch = round(pitch)
             #     pitches.append(pitch)
-            pitch = (h - t[-1][1]) / h * 27 - 6
+            percent = (h - t[-1][1]) / h
+            pitch = ((1 - percent) * -7) + (percent * 21)
             if quantized:
                 pitch = round(pitch)
             vol = compute_volume(speed, pitch, melody_synth, 0, melody_layers)
+
             # attenuate volume if very low contrast feature point
             attenuation = attenuate_volume(img, t)
             lpf = 1500*avg_speed*attenuation + 300
@@ -601,7 +651,7 @@ def generate_music(trajectories, img):
             # print("lpf is ", lpf)
             melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan, lpf)
         else:
-            pitch = (h - t[-1][1]) / h * 21 - 12
+            pitch = (h - t[-1][1]) / h * 21 - 14
             if quantized:
                 pitch = round(pitch)
             vol = compute_volume(speed, pitch, accomp_synth, 1, accomp_layers)        
@@ -619,7 +669,7 @@ def generate_music(trajectories, img):
         else:
             melody_pitches.append(melody_attrs[i][0])
     if len(melody_pitches) == len(prev_melody_pitches):
-        melody_pitches = differentiate_pitches(melody_pitches, prev_melody_pitches)
+        melody_pitches = differentiate_pitches(melody_pitches, prev_melody_pitches, offset)
     melody_pitches = refine_pitches(melody_pitches)
     # print("melody:", melody_pitches)
 
@@ -762,7 +812,7 @@ if __name__ == '__main__':
         show_frame()
 
     def stop_playback():
-        global cap, cap_exists, selected_video, trajectories, webcam, chord_quantization, chord_setting, default_chord_setting
+        global cap, cap_exists, selected_video, trajectories, webcam, chord_quantization, chord_setting, default_chord_setting, frame_idx, metrics
         play_btn.config(text="Generate")
 
         if webcam:
@@ -783,6 +833,20 @@ if __name__ == '__main__':
         trajectories = []
         cap_exists = False
         chord_quantization = chords[default_chord_setting][0]
+
+        # collect metrics
+        metrics['velocity'] /= (frame_idx + 1)
+        metrics['directional variation'] /= (frame_idx + 1)
+        if len(metrics['velocity variation']) > 1:
+            metrics['velocity variation'] = np.std(metrics['velocity variation']) / np.mean(metrics['velocity variation'])
+        if len(metrics['hue variation']) > 1:
+            metrics['hue variation'] = scipy.stats.circstd(metrics['hue variation'], high=3, low=0)
+        else:
+            metrics['hue variation'] = 0
+        print("METRICS FOR", selected_video)
+        print(metrics, "\n")
+        reset_metrics()
+        frame_idx = 0
         
     root=tk.Tk()                                     
     root.title("Kinetic Soundscapes")            #you can give any title
@@ -915,8 +979,8 @@ if __name__ == '__main__':
         # base_root = selected_root.get()
         # print("setting root to ", fd.Root.default.char)
     selected_root = tk.StringVar()
-    selected_root.set('C')
-    root_dropdown = tk.OptionMenu(sidebar_music, selected_root, 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B', command=set_root)
+    selected_root.set('Db')
+    root_dropdown = tk.OptionMenu(sidebar_music, selected_root, 'C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B', command=set_root)
     root_dropdown.grid(row=0, column=1, sticky='ew')
 
     # dropdown for chords setting
@@ -972,7 +1036,7 @@ if __name__ == '__main__':
     # plucked: karp, pluck, sitar
     # gentle: sinepad, blip
     # bright: nylon, scatter, charm
-    melody_synth_options = ['piano',  'sinepad', 'nylon', 'scatter', 'charm',  'karp', 'pluck', 'sitar',  'marimba', 'donk', 'space', 'bell', 'gong', 'blip', 'keys', 'soprano']
+    melody_synth_options = ['piano',  'sinepad', 'nylon', 'scatter', 'charm',  'karp', 'pluck', 'sitar',  'marimba', 'donk', 'space', 'bell', 'gong', 'blip', 'keys', 'soprano', 'dub', 'bass', 'jbass', 'pulse']
     melody_synth_dropdown = tk.OptionMenu(sidebar_music, selected_melody_synth, *melody_synth_options, command=set_melody_synth)
     melody_synth_dropdown.grid(row=4, column=1, sticky='ew')
     melody_synth_dropdown['menu'].insert_separator(2)

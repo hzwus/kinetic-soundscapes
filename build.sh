@@ -10,3 +10,4 @@ pip3 install tk
 pip install FoxDot
 pip install opencv-python
 pip install Pillow
+pip install scipy

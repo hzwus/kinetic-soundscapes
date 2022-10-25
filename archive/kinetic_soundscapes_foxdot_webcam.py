@@ -87,7 +87,7 @@ def generate_sound(flow_window, step=16):
 
 
 
-    # p1 >> piano(1, dur=1/2, amp=min(0.2*Mag, 3))
+    p1 >> piano(1, dur=1/2, amp=min(0.2*Mag, 3))
     
     tone1 = (5, 8)
     bass1 = 3.5
@@ -106,8 +106,8 @@ def generate_sound(flow_window, step=16):
         vol3 = 0.2*intensity3
         
     max_vol = 5
-    p1 >> piano(tone1, dur=1/4, amp=min(vol1, max_vol))
-    p2 >> klank(bass1, dur=1/4, amp=min(vol2, max_vol))
+    # p1 >> piano(tone1, dur=1/4, amp=min(vol1, max_vol))
+    # p2 >> klank(bass1, dur=1/4, amp=min(vol2, max_vol))
 
     tone2 = tone1[1]
     bass2 = bass1
@@ -117,8 +117,8 @@ def generate_sound(flow_window, step=16):
     if dominant_row == 2:
         tone2 = tone1[1] + 4
         bass2 += 2.5
-    p3 >> piano(tone2, dur=1/4, amp=min(vol1, max_vol))
-    p4 >> klank(bass2, dur=1/4, amp=min(vol2, max_vol))
+    # p3 >> piano(tone2, dur=1/4, amp=min(vol1, max_vol))
+    # p4 >> klank(bass2, dur=1/4, amp=min(vol2, max_vol))
 
 
     # fx, fy = flow[:,:,0], flow[:,:,1]
@@ -224,7 +224,7 @@ while True:
         if key == ord('q'):
             break
         
-    # generate_sound(flow_window)
+    generate_sound(flow_window)
 
     # suc, img = cap.read()
     # img = cv2.flip(img, 1)
@@ -241,7 +241,7 @@ while True:
     #     cv2.circle(blank,(x,y),3,255,-1)
     # cv2.imshow('corners', blank)
 
-    key = cv2.waitKey(5)
+    key = cv2.waitKey(10)
     if key == ord('q'):
         break
 
