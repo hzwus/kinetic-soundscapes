@@ -1,15 +1,13 @@
 
-from re import S
 import numpy as np
 import math
-import scipy.stats
+import statistics
 import time
 import random
 from os import getcwd
 from os.path import normpath, basename
 from functools import cmp_to_key
 from util import quantize, image_resize
-import colorsys
 
 
 import cv2
@@ -42,145 +40,38 @@ trajectories = []
 all_accomp = [fd.a1, fd.a2, fd.a3, fd.a4, fd.a5, fd.a6, fd.a7, fd.a8]
 all_melody = [fd.m1, fd.m2, fd.m3, fd.m4, fd.m5, fd.m6, fd.m7, fd.m8]
 
-default_melody_layers = 3
+default_melody_layers = 4
 default_accomp_layers = 4
 
-default_melody_synth = 'nylon'
-default_accomp_synth = 'nylon'
+default_melody_synth = 'sinepad'
+default_accomp_synth = 'sinepad'
 
-# default_cci = 120
+default_cci = 120
 default_bpm = 120
 quantized = True
-
-default_harmony_sus = 4
-
-# histogram for binning detected color values
-color_hist = np.zeros(4)
-# based on Scriabin's color to tone mapping
-# chords = [
-#     [-14,-12,-10,-7,-5,-3,0,2,4,7,9,11], # C
-#     [-10,-8,-6,-3,-1,1,4,6,8,11,13,15],  # G
-#     [-13,-11,-9,-6,-4,-2,1,3,5,8,10,12],  # D
-#     [-16,-14,-12,-9,-7,-5,-2,0,2,5,7,9,12,14,16], # A
-#     [-12,-10,-8,-5,-3,-1,2,4,6,9,11,13],  # E
-#     [-15,-13,-11,-8,-6,-4,-1,1,3,6,8,10],  # B
-#     [-11.5,-10,-7.5,-4.5,-3,-1.5,3.5,5,7.5,10.5,12,14.5], # F#
-#     [-13.5,-12,-9.5,-6.5,-5,-2.5,0.5,2,4.5,7.5,9,11.5,14.5,16,18.5], # C#
-#     [-10.5,-8,-6.5,-3.5,-1,0.5,4.5,7,8.5,11.5,14,15.5], # A♭
-#     [-13.5,-11,-9.5,-6.5,-4,-2.5,1.5,4,5.5,8.5,11,12.5], # E♭
-#     [-15.5,-13,-11,-8.5,-6,-4,-1.5,1,3,5.5,8,10,12.5,15,17], # B♭
-#     [-11,-9,-7,-4,-2,0,3,5,7,10,12,14] # F
-# ]
-
-# chords = [
-#             [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
-#             [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
-#             [-11, -9, -7, -4,-2,0, 3, 5, 7]
-#             ]
-
-# extend the notes of the chord to multiple octaves
-def extend_chord(chord):
-    extended = []
-    extended.extend([note - 14 for note in chord])
-    extended.extend([note - 7 for note in chord])
-    extended.extend(chord)
-    extended.extend([note + 7 for note in chord])
-    extended.extend([note + 14 for note in chord])
-    return extended
-    
-
-I = extend_chord([0, 2, 4])
-II = extend_chord([1, 3, 5])
-III = extend_chord([2, 4, 6])
-IV = extend_chord([0, 3, 5])
-V = extend_chord([-1, 1, 4])
-VI = extend_chord([0, 2, 5])
-VII = extend_chord([-1, 1, 3])
-
-I6 = extend_chord([0, 2, 4, 5])
-II6 = extend_chord([1, 3, 5, 6])
-III6 = extend_chord([2, 4, 6, 7])
-IV6 = extend_chord([0, 1, 3, 5])
-V6 = extend_chord([-1, 1, 2, 4])
-VI6 = extend_chord([0, 2, 3, 5])
-VII6 = extend_chord([-1, 1, 3, 4])
-
-I7 = extend_chord([0, 2, 4, 6])
-II7 = extend_chord([1, 3, 5, 7])
-III7 = extend_chord([2, 4, 6, 8])
-IV7 = extend_chord([0, 2, 3, 5])
-V7 = extend_chord([-1, 1, 3, 4])
-VI7 = extend_chord([0, 2, 4, 5])
-VII7 = extend_chord([-1, 1, 3, 5])
-
-# i = extend_chord([0, 1.5, 4])
-# II = extend_chord([1, 3.5, 5])
-# III = extend_chord([2, 4.5, 6])
-# iv = extend_chord([0, 3, 4.5])
-# v = extend_chord([-1.5, 1, 4])
-# VI = extend_chord([0.5, 2, 5])
-
-
-# chord_change_interval = default_cci
-prev_melody_pitches = []
-
-# "cinematic I VI III IV": [0, 8, 4, 5], # I VI III IV
-
-# https://mixedinkey.com/captain-plugins/wiki/best-chord-progressions/
-chords = {
-    "none": [I, I, I, I],
-    "basic I IV VI V": [I, IV, VI, V], # I IV V I
-    "QKThr": [I6, I7, V6, V7]
-}
-
-default_chord_setting = "QKThr"
-chord = default_chord_setting
-chord_setting = default_chord_setting
-chord_quantization = chords[default_chord_setting][0]
-
-# # cinematic
-# roots = [0, 8, 4, 5]  # I VI III IV
-# # basic
-# roots = ['C', 'G', 'F', 'D']
-
-# foxdot roots = [C - 0, C# - 1, D - 2, D# - 3 E - 4, F - 5, F# - 6, G - 7, Ab - 8, A - 9, Bb - 10, B - 11]
-# base_roots = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'Ab', 'Eb', 'Bb', 'F']
-# base_root = 'C'
+chords = [
+            [-14, -12, -10, -7,-5,2, 0,2,3,4,5, 7,9,12], 
+            [-10,-8,-6, -3,-1,1,2,3, 4,6,8,9],
+            [-11, -9, -7, -4,-2,0, 3, 5, 7]
+            ]
+chord = chords[0]
+chord_change_interval = default_cci
 
 #playback
 playing = False
 show_video = True
-show_flow = False
+show_flow = True
 selected_video = None
 cap_exists = False
 frame_idx = 0
 webcam = False
 vid_frame = 0
 chord_idx = 0
-last_picked_color = 0
 VIDEO_W = 1000
 VIDEO_H = 700
 
 global last_frame                                      #creating global variable
 # last_frame = np.zeros((480, 720, 3), dtype=np.uint8)
-
-
-# METRICS
-metrics = {
-    "velocity": 0,
-    "velocity variation": [],
-    "directional variation": 0,
-    "hue variation": []
-}
-
-def reset_metrics():
-    global metrics
-    metrics = {
-        "velocity": 0,
-        "velocity variation": [],
-        "directional variation": 0,
-        "hue variation": []
-    }
 
 def convert_for_tk(frame):
     frame = image_resize(frame, width=VIDEO_W)
@@ -199,7 +90,6 @@ def compute_flow(img):
                     blockSize = 7 )
 
     # Calculate optical flow for a sparse feature set using the iterative Lucas-Kanade Method
-
     if len(trajectories) > 0:
         img0, img1 = prev_gray, frame_gray
         pts0 = np.float32([trajectory[-1] for trajectory in trajectories]).reshape(-1, 1, 2)
@@ -266,10 +156,9 @@ def compute_flow(img):
         # Detect the good features to track
         p = cv2.goodFeaturesToTrack(frame_gray, mask = mask, **feature_params)
         if p is not None:
-            # If good features can be tracked - begin a new trajectory and add it to the trajectories list
+            # If good features can be tracked - add that to the trajectories
             for x, y in np.float32(p).reshape(-1, 2):
-                # if len(trajectories) < 100:
-                    trajectories.append([(x, y)])
+                trajectories.append([(x, y)])
 
     return img
 
@@ -279,48 +168,16 @@ def compute_path_dist(trajectory):
         dist += math.dist(trajectory[i], trajectory[i-1])
     return dist
 
-def attenuate_volume(img, point):
-    h, w = img.shape[:2]
-    pt_x = point[-1][0]
-    pt_y = point[-1][1]
-
-    # define a square around the pixel to loop over
-    s = 10
-    tl = int(max(pt_x - s, 0)), int(min(pt_y + s, h))
-    tr = int(min(pt_x + s, w)), int(min(pt_y + s, h))
-    bl = int(max(pt_x - s, 0)), int(max(pt_y - s, 0))
-    br = int(min(pt_x + s, w)), int(max(pt_y - s, 0))
-    lum_values = []
-    for x in range(bl[0], br[0]):
-        for y in range(bl[1], tl[1]):
-            if x > tr[0] or y > tr[1]:
-                continue
-            b, g, r = img[y][x]
-            lum = 0.2126*r + 0.7152*g + 0.0722*b
-            lum_values.append(lum)
-    # print("lum values", lum_values)
-    contrast = np.std(lum_values)
-    # print("contrast:", contrast)
-
-    attenuation = 1
-    if contrast < 100:
-        attenuation = 0.1*math.sqrt(contrast)
-        # print("attenuation:", attenuation)
-        # vol *= attenuation
-
-    return attenuation
-
 # compute volume based on speed of flow, calibrated according to type of synth, pitch, and flag (melody=0, accomp=1)
-def compute_volume(speed, pitch, synth, flag, layers):
-    # print("speed is ", speed)
-    vol = 3*math.log(speed+1)
+def compute_volume(speed, pitch, synth, flag):
+    vol = speed
     if flag == 0:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
-            vol *= 2
-            vol /= (pitch+20)
+            vol *= 1.1
+            vol /= (pitch+12)
         elif synth in ("marimba", "gong", "keys", "scatter"):
             vol *= 1.2
-        elif synth in ("bell", "sitar", "karp", "space", "pluck", "donk"):
+        elif synth in ("bell", "sitar", "karp", "space", "pluck"):
             vol *= 0.1
         elif synth in ("nylon"):
             vol *= 0.05
@@ -330,99 +187,29 @@ def compute_volume(speed, pitch, synth, flag, layers):
     elif flag == 1:
         if synth == "sinepad":         # fix issue of high notes sounding way louder than low notes for sinepad
             vol *= 2
-            vol /= (pitch+20)
+            vol /= (pitch+16)
         elif synth in ("nylon", "pulse", "saw", "bug", "creep", "bell", "ripple"):
-            vol *= 0.05
-        elif synth in ("klank", "charm", "piano"):
+            vol *= 0.03
+        elif synth == "glass":
+            vol *= 0.3
+        elif synth in ("klank", "charm"):
             vol *= 0.2
-        elif synth in ("gong", "keys", "glass"):
+        elif synth in ("gong", "keys"):
             vol *= 0.7
-        else:
+        elif synth in ("piano"):
             vol *= 0.1
+        else:
+            vol *= 0.05
 
     # account for faster motion from webcam input
     if webcam == True:
         vol /= 2
 
-    # if layers > 4:
-    #     vol *= 6 / layers
-
     # print(vol)
     return vol
 
-# reduce the instance of the same notes repeating
-def differentiate_pitches(pitches, prev_pitches, offset):
-    # print("prev pitches:", prev_pitches)
-    # print("current pitches:", pitches)
-    differentiated = pitches
-    for i in range(len(pitches)):
-        if pitches[i] is None or prev_pitches[i] is None:
-            continue
-        if pitches[i] == prev_pitches[i]:
-            if pitches[i] % 12 in (0, 2, 4, 6):
-                if random.uniform(0, 1) > 0.5:
-                    continue
-            if random.uniform(0, 1) > 0.5:
-                differentiated[i] += (offset[i] * random.choice([1, 1, 2]))
-            else:
-                differentiated[i] -= random.choice([-1, -1, -2])
-    
-    # print("after diff:", differentiated)
-    return differentiated
-
-# given a set of pitches, adjust them so that they sound more harmonious (make them all even or odd)
-def refine_pitches(pitches):
-    refined_pitches = pitches
-    x = random.choice(['even', 'even', 'odd'])
-    if x == 'even':
-        for i in range(len(refined_pitches)):
-            pitch = refined_pitches[i]
-            if pitch is None:
-                continue
-            if pitch % 2 != 0:
-                refined_pitches[i] += random.choice([1, -1])
-    elif x == 'odd':
-        for i in range(len(refined_pitches)):
-            pitch = refined_pitches[i]
-            if pitch is None:
-                continue
-            if pitch % 2 == 0:
-                refined_pitches[i] += random.choice([1, -1, 0, 0])
-    return refined_pitches
-
-# probabilistically choose the next chord based on the circle of fifths
-def choose_next_chord(chord_idx):
-    print("current chord_idx is ", chord_idx)
-    probabilities = [0] * 12
-    for i in range(12):
-        if i != chord_idx:
-            distance = abs(chord_idx - i) % 12
-            prob = 12 / distance
-            probabilities[i] = prob
-
-    print("probabilities", probabilities)
-
-    choices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    next_chord = random.choices(choices, weights=probabilities, k=1)
-    print("next chord is ", next_chord[0])
-    return next_chord[0]
-        
-# add a level of dissonance to the chord depending on how much color variety there is in the image
-def add_dissonance(chord, dissonance):
-    modified_chord = chord.copy()
-    threshold = dissonance / 5
-    for i in range(len(modified_chord)):
-        #[0,2,4]
-        roll = random.uniform(0, 1)
-        # print("roll, threshold: ", roll, threshold)
-        if roll < threshold:
-            modified_chord.append(random.choice([chord[i]+1, chord[i]-1]))
-
-    # print("modified chord is ", modified_chord)
-    return modified_chord
-
 def generate_music(trajectories, img):
-    global melody_layers, accomp_layers, melody_synth, accomp_synth, vid_frame, color_hist, chord, prev_melody_pitches, harmony_sus, chord_setting, chord_quantization
+    global melody_layers, accomp_layers, melody_synth, accomp_synth
 
     players_accomp = all_accomp[:accomp_layers]
     players_melody = all_melody[:melody_layers]
@@ -462,7 +249,6 @@ def generate_music(trajectories, img):
     #                   if a quadrant doesn't have enough data points, ignore it
     quadrants = [ [], [], [], [] ]
     mag_total = 0
-    dirs = []
     for t in trajectories:
         final_x, final_y = t[-1][0], t[-1][1]
         initial_x, initial_y = t[-2][0], t[-2][1]
@@ -472,10 +258,9 @@ def generate_music(trajectories, img):
         mag = math.dist(t[0], t[-1])
         mag_total += mag
 
-        # direction of flow 
-        dir = (np.arctan2(fy, fx) + np.pi)
-        # dir *= mag
-        dirs.append(dir)
+        # direction of flow weighted by magnitude
+        dir = (np.arctan2(fy, fx) + np.pi) * mag
+
         if final_x < w/2:
             if final_y < h/2: # SW quadrant
                 quadrants[0].append(dir)
@@ -487,24 +272,16 @@ def generate_music(trajectories, img):
             else: # NE quadrant
                 quadrants[3].append(dir)
      
-    # print("quadrants", quadrants)
 
     overall_stdev = 0
     for quadrant in quadrants:
         if len(quadrant) >= 2 and mag_total > 0:
-            quadrant = [val for val in quadrant]
-            quadrant_stdev = scipy.stats.circstd(quadrant)
+            quadrant = [val / mag_total for val in quadrant]     # normalize weight based on total magnitude
+            quadrant_stdev = statistics.stdev(quadrant)
             weighted_stdev = (len(quadrant)/len(trajectories))*quadrant_stdev
             overall_stdev += weighted_stdev
-    # # overall_stdev *= 10
 
-    # overall_stdev = 0
-    # if len(dirs) > 0:
-    #     overall_stdev = scipy.stats.circstd(dirs)
-
-
-    # print("overall std dev of directions is ", overall_stdev)
-    metrics['directional variation'] += overall_stdev
+    # print("overall std dev of directions is ", 10*overall_stdev)
 
     avg_speed = 0
     for i in range(len(trajectories)):
@@ -514,119 +291,48 @@ def generate_music(trajectories, img):
         avg_speed += speed
     if len(trajectories) > 0:
         avg_speed /= len(trajectories)
-    # print("avg speed of trajectories is ", avg_speed)
-    metrics['velocity'] += avg_speed
-    metrics['velocity variation'].append(avg_speed)
+    print("avg speed of trajectories is ", avg_speed)
 
-
-    tempo = 130*math.log(0.3*avg_speed+1.5)
-
-    tempo = min(220, tempo)
-    if avg_speed > 4 and overall_stdev < 0.1:
-        tempo = min(80, tempo)
-    fd.Clock.update_tempo_now(round(tempo/10)*10)
-    # print("tempo is ", fd.Clock.bpm)
-
-
-    melody_note_lengths = [0.25, 0.25, 0.25]
-    if overall_stdev > 0.01:
+    melody_note_lengths = [0.25, 0.25]
+    if overall_stdev > 0.05:
         melody_note_lengths.append(0.5)
     if overall_stdev > 0.1:
         melody_note_lengths.append(0.5)
-    if overall_stdev > 1:
+    if overall_stdev > 0.25:
         melody_note_lengths.append(1)
+    if overall_stdev > 0.5:
+        melody_note_lengths.append(0.75)
+    if overall_stdev > 1:
+        melody_note_lengths.extend([1, 0.75, 0.5, 0.25, 0.25])
     if overall_stdev > 2:
-        melody_note_lengths.extend([0.5, 0.75])
-    if overall_stdev > 5:
-        melody_note_lengths.extend([0.75, 1/3, 1])
+        melody_note_lengths.extend([1/3, 3/4, 1])
 
-    accomp_note_lengths = [4, 4, 4]
-    if overall_stdev > 0.01:
+    accomp_note_lengths = [4]
+    if overall_stdev > 0.05:
         accomp_note_lengths.append(2)
     if overall_stdev > 0.1:
         accomp_note_lengths.append(1)
+    if overall_stdev > 0.25:
+        accomp_note_lengths.append(0.5)
+    if overall_stdev > 0.5:
+        accomp_note_lengths.append(0.5)
     if overall_stdev > 1:
-        accomp_note_lengths.extend([0.5, 2])
-    if overall_stdev > 2:
         accomp_note_lengths.extend([0.5, 1, 2])
-    if overall_stdev > 5:
+    if overall_stdev > 2:
         accomp_note_lengths.extend([0.25, 2, 3])
 
-    for i in range(len(trajectories)):
-        t = trajectories[i]
-        loc_x = int(t[-1][0])
-        loc_y = int(t[-1][1])
-
-        if loc_x >= w: 
-            loc_x = w-1
-        elif loc_x < 0:
-            loc_x = 0
-        if loc_y >= h:
-            loc_y = h-1
-        elif loc_y < 0:
-            loc_y = 0
-        # bgr_color = img[loc_y, loc_x]
-        # print("bgr: ", bgr_color)
-        b, g, r = img[loc_y, loc_x] / 255
-        color = colorsys.rgb_to_hsv(r, g, b)
-        hue = color[0]
-        saturation = color[1]
-        value = color[2]
-        # print("hsv:", color)
-        # print("hue: ", hue)
-        if saturation < 0.1 or value < 0.1:
-            # print("not enough color")
-            continue
-        else:
-            # print("hue is ", hue)
-            color_hist[math.floor(hue * 4)] += 1
-
-    # detect color in 10 frame intervals
-    if vid_frame % 10 == 0 and np.sum(color_hist) > 10:
-        
-        # compute the most prominent color to assign a chord
-       
-        # print(color_hist)
-        color_hist_indices = []
-        for idx in range(len(color_hist)):
-            for i in range(int(color_hist[idx])):
-                color_hist_indices.append(idx)
-        # print("color_hist_indices:", color_hist_indices)
-        color_variation = np.std(color_hist_indices)
-        # print("color variation level:", color_variation)
-        picked_color = np.argmax(color_hist)
-        metrics['hue variation'].append(picked_color)
-        # print("color picked is ", picked_color)
-        chord_quantization = chords[chord_setting][picked_color]
-        # print("chord chosen is ", chords[chord_idx])
-        # chord = chords[chord_idx]
-
-        # print("before dissonance: ", chord)
-        # chord = add_dissonance(base_chord, color_variation)
-        # print("after dissonance: ", chord)
-
-        color_hist = np.zeros(4)
-    vid_frame += 1
-    # print("quantization is ", chord_quantization[6:9])
-
-    offset = [0] * len(trajectories_best) # the offset for each pitch based on direction
     for i in range(len(trajectories_best)):
         t = trajectories_best[i]
         dist = compute_path_dist(t)
         speed = dist / (len(t))
         pan = (t[-1][0] / w) * 1.8 - 0.9
 
-        final_x, final_y = t[-1][0], t[-1][1]
-        initial_x, initial_y = t[-2][0], t[-2][1]
-
-        fx = final_x - initial_x
-        fy = final_y - initial_y
-        # direction of flow 
-        dir = (np.arctan2(fy, fx) + np.pi)
-        if dir > np.pi/4 and dir < 3*np.pi/4:
-            offset[i] = 1
-        elif dir > 5*np.pi/4 and dir < 7*np.pi/4:
-            offset[i] = -1
+        # loc_x = int(t[-1][0])
+        # loc_y = int(t[-1][1])
+        # b, g, r = img[loc_y, loc_x]
+        # lum = (0.2126*r + 0.7152*g + 0.0722*b) / 255
+        # print(loc_x, loc_y, color)
+        # print("luminance is ", lum)
 
         if i > len(players_accomp)-1:
             dur = random.choice(melody_note_lengths)
@@ -636,47 +342,31 @@ def generate_music(trajectories, img):
             #     if quantized:
             #         pitch = round(pitch)
             #     pitches.append(pitch)
-            percent = (h - t[-1][1]) / h
-            pitch = ((1 - percent) * -7) + (percent * 21)
+            pitch = (h - t[-1][1]) / h * 27 - 6
             if quantized:
                 pitch = round(pitch)
-            vol = compute_volume(speed, pitch, melody_synth, 0, melody_layers)
-
-            # attenuate volume if very low contrast feature point
-            attenuation = attenuate_volume(img, t)
-            lpf = 1500*avg_speed*attenuation + 300
-
-            # extra dampening based on contrast
-            lpf  *= attenuation**2
-            # print("lpf is ", lpf)
+            vol = compute_volume(speed, pitch, melody_synth, 0)
+            lpf = 1500*avg_speed + 300
+            print("lpf is ", lpf)
             melody_attrs[i-len(players_accomp)] = (pitch, vol, dur, pan, lpf)
         else:
-            pitch = (h - t[-1][1]) / h * 21 - 14
+            pitch = (h - t[-1][1]) / h * 21 - 12
             if quantized:
                 pitch = round(pitch)
-            vol = compute_volume(speed, pitch, accomp_synth, 1, accomp_layers)        
-            attenuation = attenuate_volume(img, t)
+            vol = compute_volume(speed, pitch, accomp_synth, 1)
             lpf = 1500*avg_speed + 300
-            lpf  *= attenuation**2
+      
             dur = random.choice(accomp_note_lengths)
             accomp_attrs[i] = (pitch, vol, dur, pan, lpf)
     
+    # print(player_attrs)
 
-    melody_pitches = []
-    for i in range(len(melody_attrs)):
-        if melody_attrs[i] is None:
-            melody_pitches.append(None)
-        else:
-            melody_pitches.append(melody_attrs[i][0])
-    if len(melody_pitches) == len(prev_melody_pitches):
-        melody_pitches = differentiate_pitches(melody_pitches, prev_melody_pitches, offset)
-    melody_pitches = refine_pitches(melody_pitches)
-    # print("melody:", melody_pitches)
+    # rand_melody_idx = random.randint(0, len(melody_attrs)-1)   
 
     for i in range(len(melody_attrs)):
         if melody_attrs[i] is None:
-            continue
-        pitch = melody_pitches[i]
+            break
+        pitches = melody_attrs[i][0]
         # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
         # print(pitch)
         # pitch = quantize(pitch, chord)
@@ -689,7 +379,7 @@ def generate_music(trajectories, img):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_melody[i] >> synth_dict[melody_synth](pitch, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0, lpf=lpf)
+        players_melody[i] >> synth_dict[melody_synth](pitches, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=1, delay=0, lpf=lpf)
         # print("playing: ", pitches)
     
     for i in range(len(accomp_attrs)):
@@ -699,7 +389,7 @@ def generate_music(trajectories, img):
         # pitch = quantize(pitch, [-7,-5,2, 0,2,3,4,5, 7,9,12])
         # print(pitch)
         if quantized:
-            pitch = quantize(pitch, chord_quantization)
+            pitch = quantize(pitch, chord)
         # pitch = (pitch, pitch+2, pitch+4)
     
         vol = accomp_attrs[i][1]
@@ -710,9 +400,8 @@ def generate_music(trajectories, img):
         # print(delay)
 
         # synth_rand = random.choice(synths)
-        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=harmony_sus, delay=0, lpf=lpf)
+        players_accomp[i] >> synth_dict[accomp_synth](pitch, dur=dur, amp=min(1, vol), pan=pan, room=0.5, mix=0.2, sus=6, delay=0, lpf=lpf)
 
-    prev_melody_pitches = melody_pitches
     return trajectories_best_indices
 
 def show_frame(): 
@@ -731,13 +420,13 @@ def show_frame():
             cap = cv2.VideoCapture(selected_video)
         cap_exists = True
 
-    # vid_frame += 1
-    # if vid_frame % chord_change_interval == 0:
-    #     chord_idx += 1
-    #     if chord_idx == len(chords):
-    #         chord_idx = 0
-    #     chord = chords[chord_idx]
-    #     print("CHORD IS ", chord_idx)
+    vid_frame += 1
+    if vid_frame % chord_change_interval == 0:
+        chord_idx += 1
+        if chord_idx == len(chords):
+            chord_idx = 0
+        chord = chords[chord_idx]
+        print("CHORD IS ", chord_idx)
     # print(playing)
     if playing == False:   
         return                                    #creating a function
@@ -794,7 +483,6 @@ if __name__ == '__main__':
         play_btn.config(text="Generate")
         fd.Clock.clear()
         root_dropdown.config(state=tk.NORMAL)
-        chords_dropdown.config(state=tk.NORMAL)
         scale_dropdown.config(state=tk.NORMAL)
         melody_synth_dropdown.config(state=tk.NORMAL)
         accomp_synth_dropdown.config(state=tk.NORMAL)
@@ -804,7 +492,6 @@ if __name__ == '__main__':
         playing = True
         play_btn.config(text="Pause")
         root_dropdown.config(state=tk.DISABLED)
-        chords_dropdown.config(state=tk.DISABLED)
         scale_dropdown.config(state=tk.DISABLED)
         melody_synth_dropdown.config(state=tk.DISABLED)
         accomp_synth_dropdown.config(state=tk.DISABLED)
@@ -812,7 +499,7 @@ if __name__ == '__main__':
         show_frame()
 
     def stop_playback():
-        global cap, cap_exists, selected_video, trajectories, webcam, chord_quantization, chord_setting, default_chord_setting, frame_idx, metrics
+        global cap, cap_exists, selected_video, trajectories, webcam
         play_btn.config(text="Generate")
 
         if webcam:
@@ -832,21 +519,6 @@ if __name__ == '__main__':
         result.configure(image=imgtk)
         trajectories = []
         cap_exists = False
-        chord_quantization = chords[default_chord_setting][0]
-
-        # collect metrics
-        metrics['velocity'] /= (frame_idx + 1)
-        metrics['directional variation'] /= (frame_idx + 1)
-        if len(metrics['velocity variation']) > 1:
-            metrics['velocity variation'] = np.std(metrics['velocity variation']) / np.mean(metrics['velocity variation'])
-        if len(metrics['hue variation']) > 1:
-            metrics['hue variation'] = scipy.stats.circstd(metrics['hue variation'], high=3, low=0)
-        else:
-            metrics['hue variation'] = 0
-        print("METRICS FOR", selected_video)
-        print(metrics, "\n")
-        reset_metrics()
-        frame_idx = 0
         
     root=tk.Tk()                                     
     root.title("Kinetic Soundscapes")            #you can give any title
@@ -869,21 +541,20 @@ if __name__ == '__main__':
         webcam = False
         pause_playback()
         root.filename = tk.filedialog.askopenfilename(initialdir=getcwd()+'/media', title="Select a video file (mp4)", filetypes=(("mp4 files", "*.mp4"),("all files", "*.*")))
-        if (root.filename != "") :
+        if root.filename != "":
             selected_video = root.filename
-        # print("selected_video is ", selected_video)
+        print("selected_video is ", selected_video)
         var.set(basename(normpath(selected_video)))
 
         root.focus_force()
 
-        if root.filename != "":
-            cap = cv2.VideoCapture(root.filename)
-            flag, frame = cap.read()
-            frame = image_resize(frame, width=VIDEO_W)
-            imgtk = convert_for_tk(frame)
-            result.imgtk = imgtk
-            result.configure(image=imgtk)
-            stop_playback()
+        cap = cv2.VideoCapture(root.filename)
+        flag, frame = cap.read()
+        frame = image_resize(frame, width=VIDEO_W)
+        imgtk = convert_for_tk(frame)
+        result.imgtk = imgtk
+        result.configure(image=imgtk)
+        stop_playback()
 
     select_file_button = tk.Button(input, text="Select Video File", command=select_file, height=2)
     select_file_button.grid(column=0, row=0, sticky='we')
@@ -961,37 +632,24 @@ if __name__ == '__main__':
     result.configure(image=imgtk)
 
     root_label = tk.Label(sidebar_music, text="Root").grid(row=0, column=0, sticky='ws')
-    chords_label = tk.Label(sidebar_music, text="Chords").grid(row=1, column=0, sticky='ws')
-    scale_label = tk.Label(sidebar_music, text="Scale").grid(row=2, column=0, sticky='ws')
-    # tempo_label = tk.Label(sidebar_music, text="Tempo").grid(row=3, column=0, sticky='ws')
-    # cci_label = tk.Label(sidebar_music, text="Chord Change Interval").grid(row=3, column=0, sticky='ws')
+    scale_label = tk.Label(sidebar_music, text="Scale").grid(row=1, column=0, sticky='ws')
+    tempo_label = tk.Label(sidebar_music, text="Tempo").grid(row=2, column=0, sticky='ws')
+    cci_label = tk.Label(sidebar_music, text="Chord Change Interval").grid(row=3, column=0, sticky='ws')
     melody_synth_label = tk.Label(sidebar_music, text="Melody Synth").grid(row=4, column=0, sticky='ws')
     accomp_synth_label = tk.Label(sidebar_music, text="Harmony Synth").grid(row=5, column=0, sticky='ws')
     melody_layers_label = tk.Label(sidebar_music, text="Melody Layers").grid(row=6, column=0, sticky='ws')
     accomp_layers_label = tk.Label(sidebar_music, text="Harmony Layers").grid(row=7, column=0, sticky='ws')
-    harmony_sus_label = tk.Label(sidebar_music, text="Harmony Sustain").grid(row=8, column=0, sticky='ws')
 
 
     # dropdown for root
     def set_root(var):
-        global base_root
         fd.Root.default.set(selected_root.get())
-        # base_root = selected_root.get()
-        # print("setting root to ", fd.Root.default.char)
+        print("setting root to ", fd.Root.default.char)
     selected_root = tk.StringVar()
-    selected_root.set('Db')
-    root_dropdown = tk.OptionMenu(sidebar_music, selected_root, 'C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B', command=set_root)
+    selected_root.set('C')
+    root_dropdown = tk.OptionMenu(sidebar_music, selected_root, 'C', 'C#', 'D', 'D#', 'E', 'E#', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'B#', command=set_root)
     root_dropdown.grid(row=0, column=1, sticky='ew')
-
-    # dropdown for chords setting
-    def set_chords(var):
-        global chord_setting
-        chord_setting = selected_chords.get()
-    selected_chords = tk.StringVar()
-    selected_chords.set(default_chord_setting)
-    chords_dropdown = tk.OptionMenu(sidebar_music, selected_chords, "none", "basic I IV VI V", 'QKThr', command=set_chords)
-    chords_dropdown.grid(row=1, column=1, sticky='ew')
-
+ 
 
     # dropdown for scale
     def set_scale(var):
@@ -1006,22 +664,22 @@ if __name__ == '__main__':
     selected_scale.set('major')
     scale_dropdown = tk.OptionMenu(sidebar_music, selected_scale, 'major', 'minor', 'none (atonal)', 'aeolian', 'altered', 'bebopDom', 'bebopDorian', 'bebopMaj', 'bebopMelMin', 'blues', 'chinese', 'chromatic', 'custom', 'default', 'diminished', 'dorian', 'dorian2', 'egyptian', 'freq', 'halfDim', 'halfWhole', 'harmonicMajor', 'harmonicMinor', 'hungarianMinor', 'indian', 'justMajor', 'justMinor', 'locrian', 'locrianMajor', 'lydian', 'lydianAug', 'lydianDom', 'lydianMinor', 'majorPentatonic', 'melMin5th', 'melodicMajor', 'melodicMinor', 'minMaj', 'minorPentatonic', 'mixolydian', 'phrygian', 'prometheus', 'romanianMinor', 'susb9', 'wholeHalf', 'wholeTone', 'yu', 'zhi', command=set_scale)
     scale_dropdown['menu'].insert_separator(3)
-    scale_dropdown.grid(row=2, column=1, sticky='ew')
+    scale_dropdown.grid(row=1, column=1, sticky='ew')
 
-    # # slider for tempo
-    # def slide_bpm(var):
-    #     fd.Clock.update_tempo_now(bpm_slider.get())
-    # bpm_slider = tk.Scale(sidebar_music, from_=20, to=220, orient=tk.HORIZONTAL, resolution = 4, length = 150, sliderlength=20, command=slide_bpm)
-    # bpm_slider.set(120)
-    # bpm_slider.grid(row=3, column=1)
+    # slider for tempo
+    def slide_bpm(var):
+        fd.Clock.update_tempo_now(bpm_slider.get())
+    bpm_slider = tk.Scale(sidebar_music, from_=20, to=220, orient=tk.HORIZONTAL, resolution = 4, length = 150, sliderlength=20, command=slide_bpm)
+    bpm_slider.set(120)
+    bpm_slider.grid(row=2, column=1)
 
-    # # slider for chord change interval
-    # def slide_cci(var):
-    #     global chord_change_interval
-    #     chord_change_interval = cci_slider.get()
-    # cci_slider = tk.Scale(sidebar_music, from_=10, to=500, orient=tk.HORIZONTAL, resolution = 5, length = 150, sliderlength=20, command=slide_cci)
-    # cci_slider.set(default_cci)
-    # cci_slider.grid(row=3, column=1)
+    # slider for chord change interval
+    def slide_cci(var):
+        global chord_change_interval
+        chord_change_interval = cci_slider.get()
+    cci_slider = tk.Scale(sidebar_music, from_=10, to=500, orient=tk.HORIZONTAL, resolution = 5, length = 150, sliderlength=20, command=slide_cci)
+    cci_slider.set(default_cci)
+    cci_slider.grid(row=3, column=1)
 
     # dropdown for melody synth
     def set_melody_synth(var):
@@ -1036,7 +694,7 @@ if __name__ == '__main__':
     # plucked: karp, pluck, sitar
     # gentle: sinepad, blip
     # bright: nylon, scatter, charm
-    melody_synth_options = ['piano',  'sinepad', 'nylon', 'scatter', 'charm',  'karp', 'pluck', 'sitar',  'marimba', 'donk', 'space', 'bell', 'gong', 'blip', 'keys', 'soprano', 'dub', 'bass', 'jbass', 'pulse']
+    melody_synth_options = ['sinepad', 'blip',  'nylon', 'scatter', 'charm',  'karp', 'pluck', 'sitar',  'marimba', 'donk', 'space', 'bell', 'gong', 'piano', 'keys']
     melody_synth_dropdown = tk.OptionMenu(sidebar_music, selected_melody_synth, *melody_synth_options, command=set_melody_synth)
     melody_synth_dropdown.grid(row=4, column=1, sticky='ew')
     melody_synth_dropdown['menu'].insert_separator(2)
@@ -1057,13 +715,13 @@ if __name__ == '__main__':
     # bright: nylon, pulse, scatter, charm, ripple, creep, bug ( no melod), saw, pads
     # dark: dub, bass, jbass, varsaw, lazer
     # percussive: bell, gong, pluck, piano
-    accomp_synth_options = ['piano', 'ambi', 'klank', 'glass', 'space', 'soprano',  'nylon', 'pulse', 'scatter', 'charm', 'ripple', 'creep', 'bug', 'saw', 'pads',  'dub', 'bass', 'jbass', 'varsaw', 'lazer',  'sinepad', 'soft', 'blip', 'keys', 'zap',  'bell', 'gong', 'pluck',]
+    accomp_synth_options = ['ambi', 'klank', 'glass', 'space', 'soprano',  'nylon', 'pulse', 'scatter', 'charm', 'ripple', 'creep', 'bug', 'saw', 'pads',  'dub', 'bass', 'jbass', 'varsaw', 'lazer',  'sinepad', 'soft', 'blip', 'keys', 'zap',  'bell', 'gong', 'pluck', 'piano']
     accomp_synth_dropdown = tk.OptionMenu(sidebar_music, selected_accomp_synth, *accomp_synth_options, command=set_accomp_synth)
     accomp_synth_dropdown.grid(row=5, column=1, sticky='ew')
-    accomp_synth_dropdown['menu'].insert_separator(6)
-    accomp_synth_dropdown['menu'].insert_separator(16)
-    accomp_synth_dropdown['menu'].insert_separator(22)
-    accomp_synth_dropdown['menu'].insert_separator(28)
+    accomp_synth_dropdown['menu'].insert_separator(5)
+    accomp_synth_dropdown['menu'].insert_separator(15)
+    accomp_synth_dropdown['menu'].insert_separator(21)
+    accomp_synth_dropdown['menu'].insert_separator(27)
 
     # slider for melody layers
     def slide_melody_layers(var):
@@ -1081,14 +739,6 @@ if __name__ == '__main__':
     accomp_layers_slider.set(default_accomp_layers)
     accomp_layers_slider.grid(row=7, column=1)
 
-    # slider for harmony sustain level
-    def slide_harmony_sus(var):
-        global harmony_sus
-        harmony_sus = harmony_sus_slider.get()
-    harmony_sus_slider = tk.Scale(sidebar_music, from_=0, to=10, orient=tk.HORIZONTAL, resolution = 1, length = 150, sliderlength=20, command=slide_harmony_sus)
-    harmony_sus_slider.set(default_harmony_sus)
-    harmony_sus_slider.grid(row=8, column=1)
-
 
     toggles = tk.LabelFrame(playbar, borderwidth=0)
     toggles.grid(column=0)
@@ -1104,7 +754,7 @@ if __name__ == '__main__':
     def toggle_flow():
         global show_flow
         show_flow = flow_toggle_var.get() == 1
-    flow_toggle_var = tk.IntVar(value=0)
+    flow_toggle_var = tk.IntVar(value=1)
     flow_toggle = tk.Checkbutton(toggles, text="Show Flow", variable=flow_toggle_var, command=toggle_flow)
     flow_toggle.grid(column=1, row=0, sticky='w')
 
