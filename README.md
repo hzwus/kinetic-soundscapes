@@ -11,7 +11,7 @@ To install required dependencies and activate the virtual environment for the py
 source setup.sh
 ```
 
-Now we can run the program with
+Open SuperCollider and evaluate `FoxDot.start`. Now we can run the program from the command line with
 ```
 python motion_synthesizer.py
 ```
